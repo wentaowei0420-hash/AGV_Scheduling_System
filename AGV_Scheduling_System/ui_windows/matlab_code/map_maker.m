@@ -1,0 +1,106 @@
+% =========================================================================
+% 独立测试脚本：异构 AGV 非对称人工势场 (4张独立学术图片版)
+% =========================================================================
+clc; clear; close all;
+
+% --- 恢复 MATLAB 系统默认字体样式 ---
+set(groot, 'DefaultAxesFontWeight', 'normal');
+set(groot, 'DefaultTextFontWeight', 'normal');
+% set(groot, 'DefaultAxesFontName', '宋体'); 
+% set(groot, 'DefaultTextFontName', '宋体');
+
+disp('>> [系统] 正在计算高精度拓扑势能场...');
+global mapW mapH;
+mapW = 51; mapH = 51; 
+
+% 1. 提取地图
+staticMap = create_binary_grid_map(mapW, mapH, 17);
+obs_map = (staticMap == 1); 
+dist_map = bwdist(obs_map); 
+
+% 2. 生成代价地图
+costmap_type1 = zeros(mapH, mapW); 
+costmap_type2 = zeros(mapH, mapW); 
+
+for r = 1:mapH
+    for c = 1:mapW
+        if obs_map(r,c) == 1
+            costmap_type1(r,c) = NaN;
+            costmap_type2(r,c) = NaN;
+        else
+            d = dist_map(r,c);
+            % 叉车 (Type 2)：害怕墙壁，指数级斥力
+            costmap_type2(r,c) = min(1.0 + 15.0 / (d^2), 25); 
+            
+            % 托举车 (Type 1)：鼓励溜边，中心轻微斥力
+            costmap_type1(r,c) = 1.0 + 0.3 * d; 
+        end
+    end
+end
+
+disp('>> [系统] 正在分别渲染 4 张独立的高精度图像...');
+[X, Y] = meshgrid(1:mapW, 1:mapH); % 生成平滑网格
+
+% 统一字号设置 (适配论文排版)
+title_fs = 12;
+label_fs = 11;
+
+% =========================================================
+% 图 1: 托举式 AGV - 平滑等高线热力图 (Contourf)
+% =========================================================
+figure('Name', '图1：托举式AGV - 2D热力图', 'Position', [100, 100, 600, 500], 'Color', 'w');
+contourf(X, Y, costmap_type1, 30, 'LineStyle', 'none'); 
+colormap(gca, 'parula');
+c1 = colorbar; c1.Label.String = '势能代价 (Cost)';
+title('托举式AGV - 2D热力图', 'FontSize', title_fs);
+axis equal tight; 
+set(gca, 'YDir', 'normal'); 
+xlabel('X 轴 (栅格)', 'FontSize', label_fs); 
+ylabel('Y 轴 (栅格)', 'FontSize', label_fs);
+
+% =========================================================
+% 图 2: 托举式 AGV - 镂空 3D 拓扑地形图 (Surfc)
+% =========================================================
+figure('Name', '图2：托举式AGV - 3D地形图', 'Position', [150, 150, 600, 500], 'Color', 'w');
+surfc(X, Y, costmap_type1, 'EdgeAlpha', 0.1); 
+colormap(gca, 'parula');
+c2 = colorbar; c2.Label.String = '势能代价 (Cost)'; % 单图需补充色标说明
+title('托举式AGV - 3D地形图', 'FontSize', title_fs);
+set(gca, 'YDir', 'normal'); 
+shading interp; lighting gouraud; camlight('headlight'); 
+material dull; 
+view(-25, 55); 
+xlabel('X 轴 (栅格)', 'FontSize', label_fs); % 单图需补充 XY 轴标签
+ylabel('Y 轴 (栅格)', 'FontSize', label_fs);
+zlabel('势能代价 (Cost)', 'FontSize', label_fs);
+
+% =========================================================
+% 图 3: 叉车式 AGV - 平滑等高线热力图
+% =========================================================
+figure('Name', '图3：叉车式AGV - 2D热力图', 'Position', [200, 200, 600, 500], 'Color', 'w');
+contourf(X, Y, costmap_type2, 40, 'LineStyle', 'none'); 
+colormap(gca, 'turbo'); 
+c3 = colorbar; c3.Label.String = '势能代价 (Cost)';
+title('叉车式AGV - 2D热力图', 'FontSize', title_fs);
+axis equal tight; 
+set(gca, 'YDir', 'normal'); 
+xlabel('X 轴 (栅格)', 'FontSize', label_fs); 
+ylabel('Y 轴 (栅格)', 'FontSize', label_fs);
+
+% =========================================================
+% 图 4: 叉车式 AGV - 镂空 3D 拓扑地形图
+% =========================================================
+figure('Name', '图4：叉车式AGV - 3D地形图', 'Position', [250, 250, 600, 500], 'Color', 'w');
+surf(X, Y, costmap_type2, 'EdgeAlpha', 0.1);
+colormap(gca, 'turbo');
+c4 = colorbar; c4.Label.String = '势能代价 (Cost)'; % 单图需补充色标说明
+title('叉车式AGV - 3D地形图', 'FontSize', title_fs);
+set(gca, 'YDir', 'normal'); 
+shading interp; lighting gouraud; camlight('headlight');
+material dull;
+view(-25, 55);
+xlabel('X 轴 (栅格)', 'FontSize', label_fs); % 单图需补充 XY 轴标签
+ylabel('Y 轴 (栅格)', 'FontSize', label_fs);
+zlabel('势能代价 (Cost)', 'FontSize', label_fs);
+
+disp('>> [系统] 渲染完毕！请分别导出图片。');

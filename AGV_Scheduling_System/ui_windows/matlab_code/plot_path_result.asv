@@ -1,0 +1,46 @@
+function plot_path_result(map, path, start, goal, gScore, turn_count, algo_name)
+    % 绘制路径规划结果
+    % 输入：
+    %   map        : 二维栅格地图 (0:自由, 1:障碍)
+    %   path       : 路径点列表，每行为 [行, 列] (非空)
+    %   start      : 起点坐标 [行, 列]
+    %   goal       : 终点坐标 [行, 列]
+    %   gScore     : 从起点到终点的路径长度
+    %   turn_count : 路径中的转弯次数
+    %   algo_name  : 算法名称（字符串），用于图标题
+
+    % 显示路径信息（命令窗口）
+    disp(['[', algo_name, '] 路径规划成功！']);
+    disp(['  路径长度: ', num2str(gScore)]);
+    disp(['  转弯次数: ', num2str(turn_count)]);
+    
+    % 绘图
+    figure;
+    imagesc(map);
+    colormap(1-gray);                  % 反转灰度：自由空间白色，障碍黑色
+    hold on;
+    
+    % 添加灰色栅格边界线
+    ax = gca;
+    ax.XTick = 0.5:1:size(map,2)+0.5;
+    ax.YTick = 0.5:1:size(map,1)+0.5;
+    ax.XTickLabel = [];
+    ax.YTickLabel = [];
+    grid on;
+    ax.GridColor = [0.7 0.7 0.7];
+    ax.GridAlpha = 1;
+    ax.LineWidth = 0.5;
+    
+    % 绘制路径（注意坐标交换）
+    plot(path(:,2), path(:,1), 'r-', 'LineWidth', 2);
+    plot(start(2), start(1), 'go', 'MarkerSize', 5, 'MarkerFaceColor', 'g');
+    plot(goal(2), goal(1), 'ro', 'MarkerSize', 5, 'MarkerFaceColor', 'r');
+    legend('路径','起点','终点');
+    
+    % 标题包含算法名称、路径长度和转弯次数
+    title(sprintf('%s 路径规划结果 (路径长度: %.2f, 转弯次数: %d)', ...
+                  algo_name, gScore, turn_count));
+    
+    axis equal tight;
+    hold off;
+end
