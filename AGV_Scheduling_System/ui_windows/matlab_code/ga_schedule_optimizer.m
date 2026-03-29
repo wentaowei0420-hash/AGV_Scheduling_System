@@ -5,6 +5,11 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
     % 算法构成：无优化的标准 NSGA-II (托举车) + 标准 NSGA-II (叉车)
     % =========================================================
     
+    oracle_options = struct();
+    oracle_options.task_target_ids = unique(task_list(:, 2))';
+    oracle_options.agv_types = unique(agv_types)';
+    path_oracle = region_distance_oracle('build', oracle_options);
+
     idx_lift_tasks = task_list(:,2) <= 12;
     idx_fork_tasks = task_list(:,2) > 12;
     tasks_lift = task_list(idx_lift_tasks, :);
@@ -35,7 +40,7 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
     %% --- 1. 托举车：标准 NSGA-II (无自适应，贪心分批) ---
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
         disp('   -> [对比组] 启动标准 NSGA-II 引擎 (托举车)...');
-        eval_lift_moo = @(chrom) cost_func_lift_moo_baseline(chrom, tasks_lift, agvs_lift, depots, agv_params);
+        eval_lift_moo = @(chrom) cost_func_lift_moo_baseline(chrom, tasks_lift, agvs_lift, depots, agv_params, path_oracle);
         
         % 【修改】：接收 gen_fronts_lift
         [pop_lift, objs_lift, fronts_lift, ~, hist_lift_dist, hist_lift_time, hist_lift_energy, gen_fronts_lift] = run_sub_nsga2_lift_baseline(tasks_lift, length(agvs_lift), ga_params, eval_lift_moo);
@@ -66,7 +71,7 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
     %% --- 2. 叉车：基础版 NSGA-II (Baseline) ---
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
         disp('   -> [对比组] 启动标准 NSGA-II 引擎 (叉车)...');
-        eval_fork = @(chrom) cost_func_fork_baseline(chrom, tasks_fork, agvs_fork, depots, agv_params);
+        eval_fork = @(chrom) cost_func_fork_baseline(chrom, tasks_fork, agvs_fork, depots, agv_params, path_oracle);
         
         % 【修改】：接收 gen_fronts_fork
         [pop_fork, objs_fork, fronts_fork, ~, hist_fork_dist, hist_fork_time, hist_fork_energy, gen_fronts_fork] = run_sub_nsga2_fork_baseline(tasks_fork, length(agvs_fork), ga_params, eval_fork);
@@ -253,7 +258,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     end
 end
 
-function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chromosome, tasks, agv_ids, depots, agv_params)
+function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks); 
@@ -332,7 +337,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
             
             for j = 1:length(batch)
                 target_id = tasks(batch(j), 2);          
-                [pick_rc, segment_dist, ~, feasible] = get_best_astar_segment(curr_pos, target_id, 'pickup', 1, current_payload);
+                [pick_rc, segment_dist, ~, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 1, current_payload);
                 if ~feasible
                     objectives = [inf, inf, inf];
                     return;
@@ -347,7 +352,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
             
             for j = 1:length(batch)
                 target_id = tasks(batch(j), 2);
-                [drop_rc, segment_dist, ~, feasible] = get_best_astar_segment(curr_pos, target_id, 'dropoff', 1, current_payload);
+                [drop_rc, segment_dist, ~, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'dropoff', 1, current_payload);
                 if ~feasible
                     objectives = [inf, inf, inf];
                     return;
@@ -521,7 +526,7 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     end
 end
 
-function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, agv_ids, depots, agv_params)
+function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
     num_tasks = size(tasks, 1); num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks); agv_assign = chromosome(num_tasks+1:end);
     schedules = cell(1, num_agvs); 
@@ -549,13 +554,13 @@ function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, ag
             row_idx = my_tasks(t);
             target_id = tasks(row_idx, 2);
             task_weight = tasks(row_idx, 3);
-            [pick_rc, d1, ~, feasible_pick] = get_best_astar_segment(curr_pos, target_id, 'pickup', 2, 0);
+            [pick_rc, d1, ~, feasible_pick] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 2, 0);
             if ~feasible_pick
                 objectives = [inf, inf, inf];
                 return;
             end
 
-            [drop_rc, d2, ~, feasible_drop] = get_best_astar_segment(pick_rc, target_id, 'dropoff', 2, task_weight);
+            [drop_rc, d2, ~, feasible_drop] = query_region_oracle_or_astar(path_oracle, pick_rc, target_id, 'dropoff', 2, task_weight);
             if ~feasible_drop
                 objectives = [inf, inf, inf];
                 return;
@@ -643,6 +648,29 @@ function p = simple_repair(p)
         % 用缺失的任务号随机填充那些重复的位置
         p(duplicate_mask) = missing_vals(randperm(length(missing_vals)));
     end
+end
+
+function [best_rc, best_dist, best_cost, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, phase, agv_type, payload_weight)
+    best_rc = [];
+    best_dist = inf;
+    best_cost = inf;
+    feasible = false;
+
+    if nargin >= 1 && ~isempty(path_oracle)
+        try
+            [best_rc, best_dist, best_cost, feasible] = ...
+                region_distance_oracle('query', path_oracle, curr_pos, target_id, phase, agv_type);
+        catch
+            feasible = false;
+        end
+    end
+
+    if feasible
+        return;
+    end
+
+    [best_rc, best_dist, best_cost, feasible] = ...
+        get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight);
 end
 
 function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight)

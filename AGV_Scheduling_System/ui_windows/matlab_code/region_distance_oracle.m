@@ -1,45 +1,11 @@
 function varargout = region_distance_oracle(action, varargin)
-% REGION_DISTANCE_ORACLE
-% ---------------------------------------------------------------
-% A region-distance precomputation utility for GA fitness evaluation.
-%
-% Motivation:
-%   The current GA repeatedly calls A* for many candidate target cells.
-%   This file implements the "direction 1" idea discussed in the project:
-%   build a precomputed cost field for each fixed target region, then
-%   estimate path cost by table lookup instead of repeated forward A*.
-%
-% Design:
-%   1) For each AGV type + target region + phase, build one reverse
-%      multi-source shortest-path field on the static map.
-%   2) The field stores:
-%        - minimum travel cost from any grid cell to the region
-%        - minimum hop count (grid distance)
-%        - best target cell inside the region
-%   3) During GA evaluation, query by current position:
-%        [best_rc, best_dist, best_cost, feasible] =
-%            region_distance_oracle('query', oracle, curr_pos, target_id, phase, agv_type)
-%
-% Notes:
-%   - This method is intended for GA fitness evaluation on a mostly static
-%     map, not for the execution loop with dynamic conflicts.
-%   - To keep precomputation efficient, this version models static travel
-%     cost using the same obstacle map and terrain costmap as the execution
-%     layer, but does not explicitly model direction-state turn penalties.
-%   - A practical hybrid strategy is:
-%        * GA stage: use this oracle for fast cost estimation
-%        * Final refinement: run exact A* on elite solutions if needed
-%
-% Supported actions:
-%   oracle = region_distance_oracle('build')
-%   oracle = region_distance_oracle('build', optionsStruct)
-%   [best_rc, best_dist, best_cost, feasible] =
-%       region_distance_oracle('query', oracle, curr_pos, target_id, phase, agv_type)
-%
-% Recommended integration:
-%   Replace repeated calls to get_best_astar_segment(...) in the GA with
-%   a call to this oracle.
-% ---------------------------------------------------------------
+    persistent oracle_cache
+    global region_distance_cache
+
+    if nargin < 1 || isempty(action)
+        error('region_distance_oracle:MissingAction', ...
+            'Action is required. Use "build", "query", or "clearcache".');
+    end
 
     switch lower(action)
         case 'build'
@@ -48,32 +14,74 @@ function varargout = region_distance_oracle(action, varargin)
             else
                 options = struct();
             end
-            varargout{1} = build_oracle(options);
+            options = normalize_build_options(options);
+            cache_meta = build_cache_meta(options);
+            oracle = [];
+
+            if ~options.force_rebuild && options.use_persistent_cache && is_valid_cached_oracle(oracle_cache, cache_meta)
+                oracle = oracle_cache;
+                oracle.cache_source = 'persistent';
+            end
+
+            if isempty(oracle) && ~options.force_rebuild && options.use_global_cache && is_valid_cached_oracle(region_distance_cache, cache_meta)
+                oracle = region_distance_cache;
+                oracle.cache_source = 'global';
+            end
+
+            if isempty(oracle) && ~options.force_rebuild && options.use_disk_cache
+                [oracle_from_disk, loaded] = try_load_oracle_from_disk(options.cache_file, cache_meta);
+                if loaded
+                    oracle = oracle_from_disk;
+                    oracle.cache_source = 'disk';
+                end
+            end
+
+            if isempty(oracle)
+                oracle = build_oracle(options);
+                oracle.cache_meta = cache_meta;
+                oracle.cache_source = 'built';
+
+                if options.use_disk_cache
+                    try_save_oracle_to_disk(options.cache_file, oracle);
+                end
+            end
+
+            if options.use_persistent_cache
+                oracle_cache = oracle;
+            end
+            if options.use_global_cache
+                region_distance_cache = oracle;
+            end
+
+            varargout{1} = oracle;
 
         case 'query'
             [best_rc, best_dist, best_cost, feasible] = query_oracle(varargin{:});
             varargout = {best_rc, best_dist, best_cost, feasible};
 
+        case 'clearcache'
+            clear options;
+            if nargin >= 2
+                options = varargin{1};
+            else
+                options = struct();
+            end
+            options = normalize_build_options(options);
+            oracle_cache = [];
+            region_distance_cache = [];
+            if options.clear_disk_cache && exist(options.cache_file, 'file') == 2
+                delete(options.cache_file);
+            end
+            varargout{1} = true;
+
         otherwise
             error('region_distance_oracle:UnknownAction', ...
-                'Unsupported action "%s". Use "build" or "query".', action);
+                'Unsupported action "%s". Use "build", "query", or "clearcache".', action);
     end
 end
 
 function oracle = build_oracle(options)
-    if nargin < 1 || isempty(options)
-        options = struct();
-    end
-
-    if ~isfield(options, 'agv_types')
-        options.agv_types = [1, 2];
-    end
-    if ~isfield(options, 'task_target_ids')
-        options.task_target_ids = 1:16;
-    end
-    if ~isfield(options, 'include_charge_regions')
-        options.include_charge_regions = true;
-    end
+    options = normalize_build_options(options);
 
     field_map = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
@@ -91,6 +99,7 @@ function oracle = build_oracle(options)
     end
 
     oracle = struct();
+    oracle.schema_version = 2;
     oracle.mode = 'region_distance_precompute';
     oracle.created_at = char(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss'));
     oracle.field_map = field_map;
@@ -103,6 +112,143 @@ function oracle = build_oracle(options)
     ];
 end
 
+function options = normalize_build_options(options)
+    if nargin < 1 || isempty(options)
+        options = struct();
+    end
+
+    normalized = struct();
+
+    if isfield(options, 'agv_types') && ~isempty(options.agv_types)
+        normalized.agv_types = reshape(options.agv_types, 1, []);
+    else
+        normalized.agv_types = [1, 2];
+    end
+
+    if isfield(options, 'task_target_ids') && ~isempty(options.task_target_ids)
+        normalized.task_target_ids = reshape(options.task_target_ids, 1, []);
+    else
+        normalized.task_target_ids = 1:16;
+    end
+
+    if isfield(options, 'include_charge_regions')
+        normalized.include_charge_regions = logical(options.include_charge_regions);
+    else
+        normalized.include_charge_regions = true;
+    end
+
+    if isfield(options, 'use_persistent_cache')
+        normalized.use_persistent_cache = logical(options.use_persistent_cache);
+    else
+        normalized.use_persistent_cache = true;
+    end
+
+    if isfield(options, 'use_global_cache')
+        normalized.use_global_cache = logical(options.use_global_cache);
+    else
+        normalized.use_global_cache = true;
+    end
+
+    if isfield(options, 'use_disk_cache')
+        normalized.use_disk_cache = logical(options.use_disk_cache);
+    else
+        normalized.use_disk_cache = true;
+    end
+
+    if isfield(options, 'force_rebuild')
+        normalized.force_rebuild = logical(options.force_rebuild);
+    else
+        normalized.force_rebuild = false;
+    end
+
+    if isfield(options, 'clear_disk_cache')
+        normalized.clear_disk_cache = logical(options.clear_disk_cache);
+    else
+        normalized.clear_disk_cache = true;
+    end
+
+    if isfield(options, 'cache_file') && ~isempty(options.cache_file)
+        normalized.cache_file = options.cache_file;
+    else
+        normalized.cache_file = default_cache_file();
+    end
+
+    options = normalized;
+end
+
+function cache_meta = build_cache_meta(options)
+    global mapW mapH;
+    global costmap_type1 costmap_type2;
+
+    if isempty(costmap_type1) || isempty(costmap_type2)
+        init_global_costmaps();
+    end
+
+    cache_meta = struct();
+    cache_meta.oracle_schema_version = 2;
+    cache_meta.mapW = mapW;
+    cache_meta.mapH = mapH;
+    cache_meta.options = struct( ...
+        'agv_types', options.agv_types, ...
+        'task_target_ids', options.task_target_ids, ...
+        'include_charge_regions', options.include_charge_regions);
+    cache_meta.costmap_type1 = costmap_type1;
+    cache_meta.costmap_type2 = costmap_type2;
+end
+
+function tf = is_valid_cached_oracle(oracle, expected_meta)
+    tf = false;
+    if isempty(oracle) || ~isstruct(oracle) || ~isfield(oracle, 'cache_meta')
+        return;
+    end
+    if ~isfield(oracle, 'field_map')
+        return;
+    end
+    tf = isequaln(oracle.cache_meta, expected_meta);
+end
+
+function [oracle, loaded] = try_load_oracle_from_disk(cache_file, expected_meta)
+    oracle = [];
+    loaded = false;
+
+    if exist(cache_file, 'file') ~= 2
+        return;
+    end
+
+    try
+        payload = load(cache_file, 'oracle');
+    catch
+        return;
+    end
+
+    if ~isfield(payload, 'oracle')
+        return;
+    end
+
+    oracle = payload.oracle;
+    loaded = is_valid_cached_oracle(oracle, expected_meta);
+    if ~loaded
+        oracle = [];
+    end
+end
+
+function try_save_oracle_to_disk(cache_file, oracle)
+    try
+        cache_dir = fileparts(cache_file);
+        if ~isempty(cache_dir) && exist(cache_dir, 'dir') ~= 7
+            mkdir(cache_dir);
+        end
+        save(cache_file, 'oracle', '-v7.3');
+    catch ME
+        warning('region_distance_oracle:DiskCacheSaveFailed', ...
+            'Failed to save disk cache: %s', ME.message);
+    end
+end
+
+function cache_file = default_cache_file()
+    cache_file = fullfile(fileparts(mfilename('fullpath')), 'region_distance_oracle_cache.mat');
+end
+
 function field_map = build_single_field_into_map(field_map, agv_type, target_id, phase)
     key = build_field_key(agv_type, target_id, phase);
     if isKey(field_map, key)
@@ -112,6 +258,7 @@ function field_map = build_single_field_into_map(field_map, agv_type, target_id,
     [cost_map, map_rows, map_cols] = get_ga_costmap_local(agv_type);
     planning_map = create_binary_grid_map(map_cols - 1, map_rows - 1, target_id);
     candidates = get_region_candidates(target_id, phase, agv_type);
+    candidates = normalize_candidates(candidates);
     candidates = filter_valid_candidates(candidates, planning_map);
 
     if isempty(candidates)
@@ -190,9 +337,17 @@ function [cost_field, step_field, best_r_field, best_c_field] = ...
     open_src_r = zeros(0, 1);
     open_src_c = zeros(0, 1);
 
+    candidates = normalize_candidates(candidates);
+    if isempty(candidates)
+        return;
+    end
+
     for i = 1:size(candidates, 1)
         r = candidates(i, 1);
         c = candidates(i, 2);
+        if ~is_valid_grid_index(r, c, rows, cols)
+            continue;
+        end
         cost_field(r, c) = 0;
         step_field(r, c) = 0;
         best_r_field(r, c) = r;
@@ -224,6 +379,9 @@ function [cost_field, step_field, best_r_field, best_c_field] = ...
         open_src_r(idx) = [];
         open_src_c(idx) = [];
 
+        if ~is_valid_grid_index(curr_r, curr_c, rows, cols)
+            continue;
+        end
         if curr_cost > cost_field(curr_r, curr_c) + 1e-9
             continue;
         end
@@ -243,6 +401,9 @@ function [cost_field, step_field, best_r_field, best_c_field] = ...
             end
 
             move_cost = cost_map(nr, nc);
+            if ~isfinite(move_cost)
+                continue;
+            end
             tentative_cost = curr_cost + move_cost;
             tentative_steps = curr_steps + 1;
 
@@ -302,6 +463,7 @@ function key = build_field_key(agv_type, target_id, phase)
 end
 
 function candidates = filter_valid_candidates(candidates, planning_map)
+    candidates = normalize_candidates(candidates);
     if isempty(candidates)
         return;
     end
@@ -316,6 +478,40 @@ function candidates = filter_valid_candidates(candidates, planning_map)
         end
     end
     candidates = candidates(keep_mask, :);
+end
+
+function candidates = normalize_candidates(candidates)
+    if isempty(candidates)
+        candidates = zeros(0, 2);
+        return;
+    end
+
+    if isvector(candidates) && numel(candidates) == 2
+        candidates = reshape(candidates, 1, 2);
+    end
+
+    if size(candidates, 2) ~= 2
+        error('region_distance_oracle:InvalidCandidates', ...
+            'Candidates must be an N-by-2 matrix of [row, col] coordinates.');
+    end
+
+    candidates = double(candidates);
+    finite_mask = all(isfinite(candidates), 2);
+    candidates = candidates(finite_mask, :);
+
+    if isempty(candidates)
+        candidates = zeros(0, 2);
+        return;
+    end
+
+    candidates = round(candidates);
+    candidates = unique(candidates, 'rows', 'stable');
+end
+
+function tf = is_valid_grid_index(r, c, rows, cols)
+    tf = isfinite(r) && isfinite(c) && ...
+         r >= 1 && r <= rows && c >= 1 && c <= cols && ...
+         abs(r - round(r)) <= 1e-9 && abs(c - round(c)) <= 1e-9;
 end
 
 function [cost_map, map_rows, map_cols] = get_ga_costmap_local(agv_type)

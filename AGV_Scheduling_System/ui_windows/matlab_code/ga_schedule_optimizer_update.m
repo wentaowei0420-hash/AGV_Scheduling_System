@@ -1,5 +1,10 @@
 function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
 
+    oracle_options = struct();
+    oracle_options.task_target_ids = unique(task_list(:, 2))';
+    oracle_options.agv_types = unique(agv_types)';
+    path_oracle = region_distance_oracle('build', oracle_options);
+
     idx_lift_tasks = task_list(:,2) <= 12;
     idx_fork_tasks = task_list(:,2) > 12;
     
@@ -31,7 +36,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
         disp('   -> 启动 NSGA-II 引擎优化托举车 (多目标: 距离、时间、能耗)...');
         
-        eval_lift_moo = @(chrom) cost_func_lift_moo(chrom, tasks_lift, agvs_lift, depots, agv_params);
+        eval_lift_moo = @(chrom) cost_func_lift_moo(chrom, tasks_lift, agvs_lift, depots, agv_params, path_oracle);
         
         [pop_lift, objs_lift, fronts_lift, ~, hist_lift_dist, hist_lift_time, hist_lift_energy,gen_fronts_lift] = run_sub_nsga2_lift(tasks_lift, length(agvs_lift), ga_params, eval_lift_moo);
         
@@ -56,7 +61,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
     % --- 2. 叉车：全面升级为三维目标 (距离、时间、能耗) ---
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
         disp('   -> 启动 NSGA-II 引擎优化叉车 (多目标: 距离、时间、能耗)...');
-        eval_fork_moo = @(chrom) cost_func_fork_moo(chrom, tasks_fork, agvs_fork, depots, agv_params);
+        eval_fork_moo = @(chrom) cost_func_fork_moo(chrom, tasks_fork, agvs_fork, depots, agv_params, path_oracle);
         
         % 接收新增的能耗历史输出
         [pop_fork, objs_fork, fronts_fork, ~, hist_fork_dist, hist_fork_time, hist_fork_energy,gen_fronts_fork] = run_sub_nsga2_fork(tasks_fork, length(agvs_fork), ga_params, eval_fork_moo);
@@ -328,7 +333,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
 % 函数结束
 end
 
-function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, tasks, agv_ids, depots, agv_params)
+function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks);
@@ -403,7 +408,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
 
             for j = 1:length(batch)
                 target_id = tasks(batch(j), 2);
-                [pick_rc, segment_dist, ~, feasible] = get_best_astar_segment(curr_pos, target_id, 'pickup', 1, current_payload);
+                [pick_rc, segment_dist, ~, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 1, current_payload);
                 if ~feasible
                     objectives = [inf, inf, inf];
                     return;
@@ -417,7 +422,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
 
             for j = 1:length(batch)
                 target_id = tasks(batch(j), 2);
-                [drop_rc, segment_dist, ~, feasible] = get_best_astar_segment(curr_pos, target_id, 'dropoff', 1, current_payload);
+                [drop_rc, segment_dist, ~, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'dropoff', 1, current_payload);
                 if ~feasible
                     objectives = [inf, inf, inf];
                     return;
@@ -438,7 +443,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
     objectives = [sum(agv_dists), max(agv_times), sum(agv_energy)];
 end
 
-function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids, depots, agv_params)
+function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks);
@@ -476,13 +481,13 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
             target_id = tasks(row_idx, 2);
             task_weight = tasks(row_idx, 3);
 
-            [pick_rc, d1, ~, feasible_pick] = get_best_astar_segment(curr_pos, target_id, 'pickup', 2, 0);
+            [pick_rc, d1, ~, feasible_pick] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 2, 0);
             if ~feasible_pick
                 objectives = [inf, inf, inf];
                 return;
             end
 
-            [drop_rc, d2, ~, feasible_drop] = get_best_astar_segment(pick_rc, target_id, 'dropoff', 2, task_weight);
+            [drop_rc, d2, ~, feasible_drop] = query_region_oracle_or_astar(path_oracle, pick_rc, target_id, 'dropoff', 2, task_weight);
             if ~feasible_drop
                 objectives = [inf, inf, inf];
                 return;
@@ -753,6 +758,29 @@ function idx = select_compromise_index(front_objs)
     d_worst = sqrt(sum((obj_norm - ideal_worst).^2, 2));
     closeness = d_worst ./ (d_best + d_worst + 1e-9);
     [~, idx] = max(closeness);
+end
+
+function [best_rc, best_dist, best_cost, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, phase, agv_type, payload_weight)
+    best_rc = [];
+    best_dist = inf;
+    best_cost = inf;
+    feasible = false;
+
+    if nargin >= 1 && ~isempty(path_oracle)
+        try
+            [best_rc, best_dist, best_cost, feasible] = ...
+                region_distance_oracle('query', path_oracle, curr_pos, target_id, phase, agv_type);
+        catch
+            feasible = false;
+        end
+    end
+
+    if feasible
+        return;
+    end
+
+    [best_rc, best_dist, best_cost, feasible] = ...
+        get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight);
 end
 
 function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight)
