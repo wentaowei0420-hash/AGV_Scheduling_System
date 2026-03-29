@@ -1,0 +1,4 @@
+agv_id,agv_type,battery,total_distance,total_turns
+1,1,99.70,1032,124
+2,1,99.64,902,101
+3,2,99.36,1012,67

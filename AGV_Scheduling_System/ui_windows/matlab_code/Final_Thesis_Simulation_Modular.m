@@ -114,7 +114,7 @@ function Final_Thesis_Simulation_Modular()
     pause(0.5);    
     
     % 【适配】：传入优化后的 sched_exp 进行实时动态避障仿真
-    run_visualization_loop_time(num_agvs, depots, sched_exp, task_list, agv_params, agv_types);
+    run_visualization_loop_time_explicit_sm(num_agvs, depots, sched_exp, task_list, agv_params, agv_types);
     
     disp('>> [系统] 仿真任务全部结束。');
 end

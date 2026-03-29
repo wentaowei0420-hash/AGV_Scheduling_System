@@ -1,4 +1,4 @@
-﻿function run_visualization_loop_event_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+function run_visualization_loop_event_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
     % Event-driven explicit state-machine variant.
     % This version keeps the original task / path / conflict ideas,
     % but advances simulation time by the next scheduled event instead of
