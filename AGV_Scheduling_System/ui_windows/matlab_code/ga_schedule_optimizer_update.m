@@ -320,7 +320,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
 
         % --- 记录本代第一前沿（Pareto最优前沿）的三个目标的最小值 ---
         front1 = fronts{1};
-        rep_idx = front1(select_compromise_index(pop_objs(front1, :)));
+        rep_idx = get_representative_front_index(pop_objs, front1);
         dist_hist(gen) = pop_objs(rep_idx, 1);
         time_hist(gen) = pop_objs(rep_idx, 2);
         energy_hist(gen) = pop_objs(rep_idx, 3);
@@ -344,7 +344,6 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
     agv_dists = zeros(1, num_agvs);
     agv_times = zeros(1, num_agvs);
     agv_energy = zeros(1, num_agvs);
-    energy_norm_capacity = 100.0;
 
     for k = 1:num_agvs
         real_agv_id = agv_ids(k);
@@ -360,7 +359,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
 
         batches = {};
         batch_weights_list = [];
-        max_load_capacity = 80;
+        max_load_capacity = get_energy_capacity_by_agv_type(curr_agv, 1, 80);
         for t = 1:length(my_tasks)
             row_idx = my_tasks(t);
             w = tasks(row_idx, 3);
@@ -415,7 +414,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
                 end
                 dist_sum = dist_sum + segment_dist;
                 time_spent = time_spent + segment_dist / speed;
-                energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / energy_norm_capacity));
+                energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / max_load_capacity));
                 curr_pos = pick_rc;
                 current_payload = current_payload + tasks(batch(j), 3);
             end
@@ -429,7 +428,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
                 end
                 dist_sum = dist_sum + segment_dist;
                 time_spent = time_spent + segment_dist / speed;
-                energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / energy_norm_capacity));
+                energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / max_load_capacity));
                 curr_pos = drop_rc;
                 current_payload = current_payload - tasks(batch(j), 3);
             end
@@ -453,7 +452,6 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
     agv_dists = zeros(1, num_agvs);
     agv_times = zeros(1, num_agvs);
     agv_energy = zeros(1, num_agvs);
-    energy_norm_capacity = 100.0;
 
     for k = 1:num_agvs
         real_agv_id = agv_ids(k);
@@ -474,6 +472,7 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
         e_load_factor = 0.3;
         if isfield(curr_agv, 'e_base'), e_base = curr_agv.e_base; end
         if isfield(curr_agv, 'e_load_factor'), e_load_factor = curr_agv.e_load_factor; end
+        max_load_capacity = get_energy_capacity_by_agv_type(curr_agv, 2, 500);
         speed = max(curr_agv.speed, 1e-6);
 
         for t = 1:length(my_tasks)
@@ -495,7 +494,7 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
 
             dist_sum = dist_sum + d1 + d2;
             energy_spent = energy_spent + (d1 * e_base);
-            energy_spent = energy_spent + (d2 * (e_base + e_load_factor * (task_weight / energy_norm_capacity)));
+            energy_spent = energy_spent + (d2 * (e_base + e_load_factor * (task_weight / max_load_capacity)));
             time_spent = time_spent + (d1 + d2) / speed;
             curr_pos = drop_rc;
         end
@@ -633,7 +632,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         
         % 记录收敛曲线
         front1 = fronts{1};
-        rep_idx = front1(select_compromise_index(pop_objs(front1, :)));
+        rep_idx = get_representative_front_index(pop_objs, front1);
         dist_hist(gen) = pop_objs(rep_idx, 1);
         time_hist(gen) = pop_objs(rep_idx, 2);
         energy_hist(gen) = pop_objs(rep_idx, 3);
@@ -758,6 +757,39 @@ function idx = select_compromise_index(front_objs)
     d_worst = sqrt(sum((obj_norm - ideal_worst).^2, 2));
     closeness = d_worst ./ (d_best + d_worst + 1e-9);
     [~, idx] = max(closeness);
+end
+
+function rep_idx = get_representative_front_index(pop_objs, front_idx)
+    if isempty(front_idx)
+        rep_idx = 1;
+        return;
+    end
+    best_idx_in_front = select_compromise_index(pop_objs(front_idx, :));
+    rep_idx = front_idx(best_idx_in_front);
+end
+
+function capacity = get_energy_capacity_by_agv_type(curr_agv, agv_type, default_capacity)
+    if nargin < 3 || isempty(default_capacity)
+        if agv_type == 1
+            default_capacity = 80;
+        else
+            default_capacity = 500;
+        end
+    end
+
+    capacity = default_capacity;
+    if isempty(curr_agv) || ~isstruct(curr_agv)
+        return;
+    end
+
+    if isfield(curr_agv, 'max_load_capacity') && ~isempty(curr_agv.max_load_capacity) && isfinite(curr_agv.max_load_capacity) && curr_agv.max_load_capacity > 0
+        capacity = curr_agv.max_load_capacity;
+        return;
+    end
+
+    if isfield(curr_agv, 'load_capacity') && ~isempty(curr_agv.load_capacity) && isfinite(curr_agv.load_capacity) && curr_agv.load_capacity > 0
+        capacity = curr_agv.load_capacity;
+    end
 end
 
 function [best_rc, best_dist, best_cost, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, phase, agv_type, payload_weight)

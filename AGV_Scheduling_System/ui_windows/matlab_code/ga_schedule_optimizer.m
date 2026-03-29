@@ -249,9 +249,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         
         % --- 记录收敛历史 ---
         front1 = fronts{1};
-        dist_hist(gen) = min(pop_objs(front1, 1)); 
-        time_hist(gen) = min(pop_objs(front1, 2));  
-        energy_hist(gen) = min(pop_objs(front1, 3)); 
+        rep_idx = get_representative_front_index(pop_objs, front1);
+        dist_hist(gen) = pop_objs(rep_idx, 1);
+        time_hist(gen) = pop_objs(rep_idx, 2);
+        energy_hist(gen) = pop_objs(rep_idx, 3);
         
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
@@ -269,11 +270,11 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
     agv_dists = zeros(1, num_agvs);               
     agv_times = zeros(1, num_agvs);               
     agv_energy = zeros(1, num_agvs); 
-    max_load_capacity = 80;                       
     
     for k = 1:num_agvs
         real_agv_id = agv_ids(k);                  
-        curr_agv = agv_params(real_agv_id);                
+        curr_agv = agv_params(real_agv_id);
+        max_load_capacity = get_energy_capacity_by_agv_type(curr_agv, 1, 80);
         
         my_tasks = task_seq(agv_assign == k);
         real_task_ids = tasks(my_tasks, 1)';
@@ -344,6 +345,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
                 end
                 
                 dist_sum = dist_sum + segment_dist; 
+                time_spent = time_spent + segment_dist / speed;
                 energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / max_load_capacity));
                 
                 curr_pos = pick_rc;                   
@@ -359,12 +361,12 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
                 end
                 
                 dist_sum = dist_sum + segment_dist;
+                time_spent = time_spent + segment_dist / speed;
                 energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / max_load_capacity));
                 
                 curr_pos = drop_rc;                      
                 current_payload = current_payload - tasks(batch(j), 3);
             end
-            time_spent = time_spent + dist_sum / speed; 
         end
         agv_dists(k) = dist_sum;                           
         agv_times(k) = time_spent;                          
@@ -517,9 +519,10 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         
         % --- 7. 记录收敛历史 ---
         front1 = fronts{1};
-        cost_hist_dist(gen) = min(pop_objs(front1, 1));
-        cost_hist_time(gen) = min(pop_objs(front1, 2));
-        cost_hist_energy(gen) = min(pop_objs(front1, 3));
+        rep_idx = get_representative_front_index(pop_objs, front1);
+        cost_hist_dist(gen) = pop_objs(rep_idx, 1);
+        cost_hist_time(gen) = pop_objs(rep_idx, 2);
+        cost_hist_energy(gen) = pop_objs(rep_idx, 3);
         
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
@@ -534,10 +537,10 @@ function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, ag
     agv_dists = zeros(1, num_agvs);
     agv_times = zeros(1, num_agvs);
     agv_energy = zeros(1, num_agvs);
-    max_load_capacity = 500; 
     
     for k = 1:num_agvs
         real_agv_id = agv_ids(k); curr_agv = agv_params(real_agv_id);
+        max_load_capacity = get_energy_capacity_by_agv_type(curr_agv, 2, 500);
         my_tasks = task_seq(agv_assign == k);
         real_task_ids = tasks(my_tasks, 1)'; schedules{k} = real_task_ids;
         if isempty(my_tasks), continue; end
@@ -647,6 +650,56 @@ function p = simple_repair(p)
         
         % 用缺失的任务号随机填充那些重复的位置
         p(duplicate_mask) = missing_vals(randperm(length(missing_vals)));
+    end
+end
+
+function idx = select_compromise_index(front_objs)
+    if isempty(front_objs)
+        idx = 1;
+        return;
+    end
+
+    min_objs = min(front_objs, [], 1);
+    max_objs = max(front_objs, [], 1);
+    obj_norm = (front_objs - min_objs) ./ (max_objs - min_objs + 1e-9);
+    ideal_best = min(obj_norm, [], 1);
+    ideal_worst = max(obj_norm, [], 1);
+    d_best = sqrt(sum((obj_norm - ideal_best).^2, 2));
+    d_worst = sqrt(sum((obj_norm - ideal_worst).^2, 2));
+    closeness = d_worst ./ (d_best + d_worst + 1e-9);
+    [~, idx] = max(closeness);
+end
+
+function rep_idx = get_representative_front_index(pop_objs, front_idx)
+    if isempty(front_idx)
+        rep_idx = 1;
+        return;
+    end
+    best_idx_in_front = select_compromise_index(pop_objs(front_idx, :));
+    rep_idx = front_idx(best_idx_in_front);
+end
+
+function capacity = get_energy_capacity_by_agv_type(curr_agv, agv_type, default_capacity)
+    if nargin < 3 || isempty(default_capacity)
+        if agv_type == 1
+            default_capacity = 80;
+        else
+            default_capacity = 500;
+        end
+    end
+
+    capacity = default_capacity;
+    if isempty(curr_agv) || ~isstruct(curr_agv)
+        return;
+    end
+
+    if isfield(curr_agv, 'max_load_capacity') && ~isempty(curr_agv.max_load_capacity) && isfinite(curr_agv.max_load_capacity) && curr_agv.max_load_capacity > 0
+        capacity = curr_agv.max_load_capacity;
+        return;
+    end
+
+    if isfield(curr_agv, 'load_capacity') && ~isempty(curr_agv.load_capacity) && isfinite(curr_agv.load_capacity) && curr_agv.load_capacity > 0
+        capacity = curr_agv.load_capacity;
     end
 end
 
