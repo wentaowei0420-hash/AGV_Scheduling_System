@@ -1,4 +1,4 @@
-﻿function verify_conflict_resolution_with_3D()
+function verify_conflict_resolution_with_3D()
     style = agv_plot_theme();
     init_agv_plot_defaults(style);
     % =========================================================================

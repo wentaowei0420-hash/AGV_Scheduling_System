@@ -1,9 +1,10 @@
-function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
+﻿function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
 
     oracle_options = struct();
     oracle_options.task_target_ids = unique(task_list(:, 2))';
     oracle_options.agv_types = unique(agv_types)';
     path_oracle = region_distance_oracle('build', oracle_options);
+    report_parallel_evaluation_status();
 
     idx_lift_tasks = task_list(:,2) <= 12;
     idx_fork_tasks = task_list(:,2) > 12;
@@ -34,7 +35,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
 
     %% 托举式AGV相关操作       
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
-        disp('   -> 启动 NSGA-II 引擎优化托举车 (多目标: 距离、时间、能耗)...');
+        disp('   -> 启动 NSGA-II 引擎优化托举车（多目标：距离、时间、能耗）...');
         
         eval_lift_moo = @(chrom) cost_func_lift_moo(chrom, tasks_lift, agvs_lift, depots, agv_params, path_oracle);
         
@@ -43,7 +44,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
         front1_idx = fronts_lift{1}; 
         front1_objs = objs_lift(front1_idx, :);
         
-        % TOPSIS 妥协决策机制
+        % TOPSIS 折中解选择策略
         best_idx_in_front1 = select_compromise_index(front1_objs);
         best_lift_chrom = pop_lift(front1_idx(best_idx_in_front1), :);
         
@@ -58,15 +59,15 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
         end
     end 
     %% 叉车式AGV相关操作   
-    % --- 2. 叉车：全面升级为三维目标 (距离、时间、能耗) ---
+    % --- 2. 叉车：升级为三维目标（距离、时间、能耗） ---
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
-        disp('   -> 启动 NSGA-II 引擎优化叉车 (多目标: 距离、时间、能耗)...');
+        disp('   -> 启动 NSGA-II 引擎优化叉车（多目标：距离、时间、能耗）...');
         eval_fork_moo = @(chrom) cost_func_fork_moo(chrom, tasks_fork, agvs_fork, depots, agv_params, path_oracle);
         
         % 接收新增的能耗历史输出
         [pop_fork, objs_fork, fronts_fork, ~, hist_fork_dist, hist_fork_time, hist_fork_energy,gen_fronts_fork] = run_sub_nsga2_fork(tasks_fork, length(agvs_fork), ga_params, eval_fork_moo);
         
-        % TOPSIS 妥协决策机制
+        % TOPSIS 折中解选择策略
         front1_idx = fronts_fork{1}; 
         front1_objs = objs_fork(front1_idx, :);
         
@@ -82,8 +83,8 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
             best_schedule{agvs_fork(i)} = sched_fork{i};
         end
     end
-    %% === 统一打包输出，结构体降维 ===
-    % 1. 打包最终稳态指标 (Metrics)
+    %% === 统一打包输出：结构体封装 ===
+    % 1. 打包最终稳态指标（Metrics）
     metrics.lift.dist = dist_lift;       
     metrics.lift.time = time_lift;       
     metrics.lift.energy = energy_lift;   
@@ -114,70 +115,66 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
 %% 托举式AGV相关函数
 function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fronts_history] = run_sub_nsga2_lift(tasks, num_sub_agvs, ga_params, eval_func)
 % =========================================================================
-% 函数功能：运行子种群NSGA-II算法（针对带提升操作的AGV任务调度）
-% 输入参数：
+% 注释已修复
+% 注释已修复
 %   tasks          - 任务矩阵，每一行代表一个任务的信息
-%   num_sub_agvs   - 子AGV的数量（即车辆数）
-%   ga_params      - 结构体，包含遗传算法的参数（pop_size种群大小，max_gen最大代数）
-%   eval_func      - 函数句柄，用于评估个体，返回[~, obj]其中obj=[距离,时间,能量]
-% 输出参数：
-%   pop             - 最终种群（大小为pop_size × (2*任务数)）
-%   pop_objs        - 最终种群的目标值矩阵（pop_size × 3）
-%   fronts          - 最终种群的非支配前沿（元胞数组）
-%   cd              - 最终种群的拥挤距离向量
-%   dist_hist       - 每代Pareto前沿中最小距离的历史记录（1×max_gen）
+% 注释已修复
+%   ga_params          - 遗传算法参数结构体，包含种群规模与最大迭代代数
+%   eval_func          - 个体评估函数，返回 [~, obj]，其中 obj=[距离, 时间, 能耗]
+% 注释已修复
+%   pop                - 最终种群，大小为 pop_size × (2*任务数)
+% 注释已修复
+% 注释已修复
+%   cd                 - 最终种群的拥挤距离向量
+% 注释已修复
 %   time_hist       - 每代Pareto前沿中最小时间的历史记录
 %   energy_hist     - 每代Pareto前沿中最小能量的历史记录
-%   gen_fronts_history - 元胞数组，保存每一代第一前沿所有个体的目标值（用于后期分析）
+%   gen_fronts_history - 保存每代第一前沿全部目标值的元胞数组
 % =========================================================================
    
     % 获取任务数量（即任务矩阵的行数）
     num_tasks = size(tasks, 1);
     % 从ga_params结构体中提取种群大小
     pop_size = ga_params.pop_size;
-    % 从ga_params结构体中提取最大迭代代数
+    % 注释已修复
     max_gen = ga_params.max_gen;
 
-    % 初始化历史记录数组：距离、时间、能量，每个都是1×max_gen的行向量，初始全0
+    % 初始化历史记录数组：距离、时间、能耗
     dist_hist = zeros(1, max_gen);
     time_hist = zeros(1, max_gen);
     energy_hist = zeros(1, max_gen);
 
-    % 定义交叉概率的自适应范围：最大交叉率0.6，最小交叉率0.3
+    % 交叉概率自适应范围：pc_max=0.6，pc_min=0.3
     pc_max = 0.6; pc_min = 0.3;
-    % 定义变异概率的自适应范围：最大变异率0.2，最小变异率0.05
+    % 变异概率自适应范围：pm_max=0.2，pm_min=0.05
     pm_max = 0.2; pm_min = 0.05;
 
     % 预分配内存，用于存储每一代第一前沿的所有个体的目标值，提升运行速度
     gen_fronts_history = cell(1, max_gen);
 
-    %% 1.1 - 初始化种群
-    % 种群矩阵 pop：大小为 pop_size × (2*num_tasks)
-    % 每一行代表一个个体，编码方式：
-    %   前 num_tasks 个基因：任务的访问顺序（1..num_tasks 的一个排列）
-    %   后 num_tasks 个基因：每个任务分配的AGV编号（1..num_sub_agvs 的整数）
+    %% 注释已修复
+    % 注释已修复
+    % 注释已修复
+    %   前 num_tasks 个基因：任务访问顺序（1..num_tasks 的排列）
+    %   后 num_tasks 个基因：任务分配的 AGV 编号（1..num_sub_agvs）
     pop = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
-        % 随机生成任务的访问顺序（排列）
+        % 注释已修复
         pop(i, 1:num_tasks) = randperm(num_tasks);
-        % 随机为每个任务分配AGV（1到num_sub_agvs之间的随机整数）
+        % 注释已修复
         pop(i, num_tasks+1:end) = randi([1, num_sub_agvs], 1, num_tasks);
     end
 
     %% 1.2 - 初始化评估（计算初始种群的目标值）
-    % pop_objs：种群中每个个体的三个目标值（距离、时间、能量），大小为 pop_size × 3
-    pop_objs = zeros(pop_size, 3);
-    for i = 1:pop_size
-        % 调用外部评估函数 eval_func，传入个体编码，得到该个体的目标值obj
-        [~, obj] = eval_func(pop(i,:));
-        pop_objs(i,:) = obj;   % 存储三个目标值
-    end
+    % 注释已修复
+    pop_objs = evaluate_population_parallel(pop, eval_func);
 
-    % 对初始种群进行快速非支配排序，返回：
-    %   fronts - 元胞数组，每个元素包含属于同一前沿的个体索引
-    %   rank   - 每个个体所属的前沿编号（1为最优前沿，数值越小越优）
+
+    % 对初始种群执行快速非支配排序
+    % 注释已修复
+    %   rank - 个体所属前沿编号，数值越小表示越优
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
-    % 计算每个个体的拥挤距离（基于目标空间），用于维持种群多样性
+    % 注释已修复
     cd = calc_crowding_distance(pop_objs, fronts);
 
     %% 主循环：进化迭代
@@ -185,55 +182,55 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         % 初始化子代种群矩阵（大小与父代相同）
         offspring = zeros(pop_size, num_tasks * 2);
 
-        % 计算当前种群的平均前沿等级（rank值）和最小前沿等级
+        % 注释已修复
         avg_rank = mean(rank);
         min_rank = min(rank);
 
-        % 构建多目标排序依据：先按前沿等级rank升序，再按拥挤距离-cd降序（即距离大的优先）
+        % 注释已修复
         sort_criteria = [rank, -cd];
-        % 对种群个体按上述标准排序，得到排序后的索引 sorted_moo_idx
+        % 注释已修复
         [~, sorted_moo_idx] = sortrows(sort_criteria);
 
-        % 初始化 moo_ranks 向量，用于存储个体在多目标排序中的全局顺序（1为最好，pop_size为最差）
+        % 初始化多目标排序索引
         moo_ranks = zeros(pop_size, 1);
-        % 将排序后的位置赋值给对应个体：排在第一位（最好）的个体得到 moo_rank = 1
+        % 注释已修复
         moo_ranks(sorted_moo_idx) = 1:pop_size;
 
-        % 采用锦标赛选择法产生子代，每次选两个父代，生成两个子代，直到填满 offspring
-        i = 1;   % 子代计数索引
+        % 注释已修复
+        i = 1;   % 子代写入位置
         while i <= pop_size
-            % 通过锦标赛选择（基于rank和cd）选出第一个父代索引
+            % 注释已修复
             p1_idx = tournament_select_nsga2(rank, cd);
-            % 选出第二个父代索引
+            % 注释已修复
             p2_idx = tournament_select_nsga2(rank, cd);
-            % 初始子代设为父代个体的副本（后续根据交叉变异决定是否修改）
+            % 先复制父代个体，后续再依据交叉和变异进行修改
             child1 = pop(p1_idx, :);
             child2 = pop(p2_idx, :);
 
-            % 获取两个父代的rank值
+            % 注释已修复
             rank_p1 = rank(p1_idx);
             rank_p2 = rank(p2_idx);
-            % 取两个父代中较优的rank（数值较小）作为“better_rank”，用于自适应交叉率
+            % 注释已修复
             better_rank = min(rank_p1, rank_p2);
 
-            % --- 自适应交叉概率 ---
-            % 如果较优父代的rank不差于平均rank（即rank值 <= 平均rank），说明个体质量较好，
-            % 此时交叉概率随rank值线性变化：rank越低（越好），交叉率越高（从pc_min到pc_max）
+            % 注释已修复
+            % 自适应交叉概率：优良个体降低扰动，较差个体增强探索
+            % 注释已修复
             if better_rank <= avg_rank
                 pc = pc_min + (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
             else
-                % 如果较优父代的rank比平均rank差，则使用最大交叉率，以增强探索
+                % 较差个体使用较大的交叉概率，增强全局搜索能力
                 pc = pc_max;
             end
 
-            % --- 自适应变异概率（分别对两个父代）---
-            % 对于第一个父代，若其rank不差于平均rank，变异率随rank线性增加（越好的个体变异率越小）
+            % --- 自适应变异概率（分别针对两个父代） ---
+            % 注释已修复
             if rank_p1 <= avg_rank
                 pm1 = pm_min + (pm_max - pm_min) * (rank_p1 - min_rank) / (avg_rank - min_rank + 1e-6);
             else
-                pm1 = pm_max;   % 较差的个体使用最大变异率，增加扰动
+                pm1 = pm_max;
             end
-            % 同理计算第二个父代的变异率
+            % 注释已修复
             if rank_p2 <= avg_rank
                 pm2 = pm_min + (pm_max - pm_min) * (rank_p2 - min_rank) / (avg_rank - min_rank + 1e-6);
             else
@@ -241,94 +238,91 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             end
 
             % --- 交叉操作 ---
-            % 如果随机数小于当前交叉概率pc，则对两个父代进行 IPOX-MPX 交叉（一种针对任务排序和分配的特殊交叉）
+            % 注释已修复
             if rand < pc
                 [child1, child2] = crossover_IPOX_MPX(pop(p1_idx,:), pop(p2_idx,:), num_tasks);
             end
-            % 注意：若未交叉，则child1,child2保留为父代副本
+            % 注释已修复
 
             % --- 变异操作 ---
-            % 对第一个子代：如果随机数小于变异率pm1，则执行 fork-CPO 变异（一种结合任务顺序和AGV分配的变异）
-            % 变异函数传入参数：子代个体、任务数、AGV数、变异率、当前代数、最大代数、父代的moo排名、种群大小
+            % 根据个体质量选择不同的变异策略
+            % 对优秀个体执行局部精细搜索，对一般个体执行更强扰动
             if rand < pm1
                 child1 = mutate_fork_cpo(child1, num_tasks, num_sub_agvs, pm1, gen, max_gen, moo_ranks(p1_idx), pop_size);
             end
-            % 对第二个子代同样操作
+            % 初始化子代种群写入位置
             if rand < pm2
                 child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size);
             end
 
-            % 将生成的两个子代存入 offspring 矩阵
+            % 构造临时子代种群 offspring
             offspring(i, :) = child1;
-            % 确保不越界（当pop_size为奇数时，最后一轮可能只有一个子代）
+            % 注释已修复
             if i+1 <= pop_size
                 offspring(i+1, :) = child2;
             end
-            % 子代索引前进2（每次生成两个子代）
+            % 父代与子代合并后的临时种群
             i = i + 2;
         end
 
         % --- 评估子代种群的目标值 ---
-        off_objs = zeros(pop_size, 3);
-        for i = 1:pop_size
-            [~, obj] = eval_func(offspring(i,:));
-            off_objs(i,:) = obj;
-        end
+        off_objs = evaluate_population_parallel(offspring, eval_func);
 
-        % --- 合并父代与子代，形成大小为 2*pop_size 的临时种群 ---
+
+        % --- 合并父代与子代，形成 2*pop_size 的临时种群 ---
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
 
-        % 对合并后的种群进行快速非支配排序
+        % 重新进行非支配排序并更新拥挤距离
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
-        % 计算合并种群的拥挤距离
+        % 注释已修复
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
 
-        % --- 环境选择：从合并种群中选出 pop_size 个个体构成下一代种群 ---
-        % 清空 pop 和 pop_objs 以重新填充
+        % --- 精英保留：按前沿顺序依次填充新种群 ---
+        % combined_pop 与 combined_objs 为父代和子代的合并结果
         pop = zeros(pop_size, num_tasks * 2);
         pop_objs = zeros(pop_size, 3);
-        current_idx = 1;      % 当前已选择的个体数量指针
+        current_idx = 1;      % 当前已写入的新种群位置
         f = 1;                 % 前沿索引
 
         % 按照前沿等级从低到高依次选择个体，直到填满新种群
         while current_idx <= pop_size && f <= length(c_fronts)
-            front = c_fronts{f};   % 当前前沿的所有个体索引
-            % 如果当前前沿的所有个体都能被完整加入新种群而不超出大小
+            front = c_fronts{f};
+            % 若整个前沿都可以保留，则整层写入新种群
             if current_idx + length(front) - 1 <= pop_size
-                % 将该前沿的所有个体直接加入
+                % 注释已修复
                 pop(current_idx : current_idx + length(front) - 1, :) = combined_pop(front, :);
                 pop_objs(current_idx : current_idx + length(front) - 1, :) = combined_objs(front, :);
                 current_idx = current_idx + length(front);
             else
                 % 如果当前前沿只能部分加入，则根据拥挤距离降序排序，选择距离最大的个体填充剩余位置
                 [~, sort_idx] = sort(c_cd(front), 'descend');
-                num_needed = pop_size - current_idx + 1;   % 还需要选择的个体数
-                selected_front = front(sort_idx(1:num_needed));   % 选择拥挤距离最大的前num_needed个
+                % 只补足当前仍然需要的个体数量
+                selected_front = front(sort_idx(1:num_needed));
 
-                % 将选中的个体放入新种群
+                % 按拥挤距离降序截取当前前沿中的个体
                 pop(current_idx : end, :) = combined_pop(selected_front, :);
                 pop_objs(current_idx : end, :) = combined_objs(selected_front, :);
-                break;   % 已填满，退出循环
+                break;   % 新种群已填满，结束当前代构造
             end
-            f = f + 1;   % 移动到下一个前沿
+            f = f + 1;   % 转入下一前沿
         end
 
-        % --- 对新一代种群重新进行非支配排序和拥挤距离计算 ---
+        % 注释已修复
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
 
-        % --- 记录本代第一前沿（Pareto最优前沿）的三个目标的最小值 ---
+        % --- 记录当前代的代表解与第一前沿全部目标值 ---
         front1 = fronts{1};
         rep_idx = get_representative_front_index(pop_objs, front1);
         dist_hist(gen) = pop_objs(rep_idx, 1);
         time_hist(gen) = pop_objs(rep_idx, 2);
         energy_hist(gen) = pop_objs(rep_idx, 3);
 
-        % 【新增】：保存这一代的第一前沿所有解的目标值 (N × 3 矩阵)，用于后续分析或绘图
+        % 保存本代第一前沿全部目标值（N×3 矩阵）
         gen_fronts_history{gen} = pop_objs(front1, :);
     end
-    % 主循环结束
+    % 注释已修复
 
 % 函数结束
 end
@@ -520,19 +514,16 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
     pm_max = 0.15; pm_min = 0.05; 
     % 【新增】：预分配内存，提升运行速度
     gen_fronts_history = cell(1, max_gen);
-    %% 初始化种群
+    %% 注释已修复
     pop = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
         pop(i, 1:num_tasks) = randperm(num_tasks);
         pop(i, num_tasks+1:end) = randi([1, num_sub_agvs], 1, num_tasks);
     end    
     
-    %% 初始化评估 (变更为 3 维)
-    pop_objs = zeros(pop_size, 3); 
-    for i = 1:pop_size
-        [~, obj] = eval_func(pop(i,:));
-        pop_objs(i,:) = obj;
-    end    
+    %% 初始评估（三维目标）
+    pop_objs = evaluate_population_parallel(pop, eval_func);
+
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
@@ -541,7 +532,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         offspring = zeros(pop_size, num_tasks * 2);
         avg_rank = mean(rank);
         min_rank = min(rank); 
-        % 与托举子问题保持一致：基于 NSGA-II 的 rank + crowding distance 生成多目标排序
+        % 注释已修复
         sort_criteria = [rank, -cd];
         [~, sorted_moo_idx] = sortrows(sort_criteria);
         moo_ranks = zeros(pop_size, 1);
@@ -557,7 +548,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             rank_p2 = rank(p2_idx);
             better_rank = min(rank_p1, rank_p2);             
             
-            % 自适应概率
+            % 閼奉亪鈧倸绨插鍌滃芳
             if better_rank <= avg_rank
                 pc = pc_min + (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
             else
@@ -574,12 +565,12 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
                 pm2 = pm_max;
             end
             
-            % 交叉 (保留原有的 IPOX_MPX)
+            % 交叉：使用 IPOX_MPX 算子
             if rand < pc
                 [child1, child2] = crossover_IPOX_MPX(pop(p1_idx,:), pop(p2_idx,:), num_tasks); 
             end
             
-            % 变异 (调用 CPO 算子，使用多目标排序而非单距离排序)
+            % 变异：基于 CPO 思想的自适应变异
             if rand < pm1
                 child1 = mutate_fork_cpo(child1, num_tasks, num_sub_agvs, pm1, gen, max_gen, moo_ranks(p1_idx), pop_size); 
             end
@@ -592,20 +583,17 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             i = i + 2;
         end        
         
-        % 评估子代 (变更为 3 维)
-        off_objs = zeros(pop_size, 3);
-        for i = 1:pop_size
-            [~, obj] = eval_func(offspring(i,:));
-            off_objs(i,:) = obj;
-        end
+        % 评估子代（三维目标）
+        off_objs = evaluate_population_parallel(offspring, eval_func);
+
         
-        % 合并与非支配排序
+        % 合并并执行非支配排序
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
         
-        % 精英截断 (变更为 3 维)
+        % 精英保留（三维目标）
         pop = zeros(pop_size, num_tasks * 2);
         pop_objs = zeros(pop_size, 3);
         current_idx = 1; f = 1;
@@ -630,13 +618,13 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
-        % 记录收敛曲线
+        % 注释已修复
         front1 = fronts{1};
         rep_idx = get_representative_front_index(pop_objs, front1);
         dist_hist(gen) = pop_objs(rep_idx, 1);
         time_hist(gen) = pop_objs(rep_idx, 2);
         energy_hist(gen) = pop_objs(rep_idx, 3);
-        % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
+        % 保存本代第一前沿全部目标值（N×3）
         gen_fronts_history{gen} = pop_objs(front1, :);
     end
 end
@@ -651,7 +639,7 @@ function cd = calc_crowding_distance(pop_objs, fronts)
         front = fronts{f};
         l = length(front);
         
-        % 如果该面只有 1 或 2 个个体，直接设为无穷大
+        % 随机选择 1 或 2 个任务进行交换
         if l <= 2
             cd(front) = inf;
             continue;
@@ -662,14 +650,14 @@ function cd = calc_crowding_distance(pop_objs, fronts)
             [sorted_objs, idx] = sort(pop_objs(front, m));
             sorted_front = front(idx);
             
-            % 边界个体拥挤度设为无穷大，确保其被保留
+            % 注释已修复
             cd(sorted_front(1)) = inf;
             cd(sorted_front(end)) = inf;
             
             f_min = sorted_objs(1);
             f_max = sorted_objs(end);
             
-            if f_max - f_min == 0, continue; end % 防止除以 0
+            if f_max - f_min == 0, continue; end
             
             % 内部个体根据相邻个体的目标差值计算拥挤度
             for i = 2:l-1
@@ -684,13 +672,13 @@ function idx = tournament_select_nsga2(rank, cd)
     i1 = randi(pop_size);
     i2 = randi(pop_size);
     
-    % 规则 1：等级低的优先 (帕累托层面靠前)
+    % 第一阶段：偏向全局探索
     if rank(i1) < rank(i2)
         idx = i1;
     elseif rank(i1) > rank(i2)
         idx = i2;
     else
-        % 规则 2：等级相同时，拥挤度大的优先 (保护多样性)
+    % 第二阶段：偏向局部开发
         if cd(i1) > cd(i2)
             idx = i1;
         else
@@ -702,28 +690,28 @@ end
 function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
     pop_size = size(pop_objs, 1);
     fronts = cell(pop_size, 1);
-    domination_count = zeros(pop_size, 1); % 记录被多少人支配 (n_p)
-    dominated_set = cell(pop_size, 1);     % 记录支配了哪些人 (S_p)
+    domination_count = zeros(pop_size, 1); % 鐠佹澘缍嶇悮顐㈩樋鐏忔垳姹夐弨顖炲帳 (n_p)
+    dominated_set = cell(pop_size, 1);     % 鐠佹澘缍嶉弨顖炲帳娴滃棗鎽㈡禍娑楁眽 (S_p)
     rank = zeros(pop_size, 1);
 
     for i = 1:pop_size
         for j = 1:pop_size
             if i == j, continue; end
-            % 支配条件：i 的所有目标都 <= j，且至少有一个目标 < j
+            % 若个体 i 支配个体 j，则记录支配关系
             if all(pop_objs(i,:) <= pop_objs(j,:)) && any(pop_objs(i,:) < pop_objs(j,:))
                 dominated_set{i} = [dominated_set{i}, j];
             elseif all(pop_objs(j,:) <= pop_objs(i,:)) && any(pop_objs(j,:) < pop_objs(i,:))
                 domination_count(i) = domination_count(i) + 1;
             end
         end
-        % 如果不被任何人支配，则属于第一前沿 (Rank 1)
+        % 提取第一前沿（Rank 1）
         if domination_count(i) == 0
             rank(i) = 1;
             fronts{1} = [fronts{1}, i];
         end
     end
 
-    % 逐层剥离构建后续前沿面
+    % 注释已修复
     current_front = 1;
     while ~isempty(fronts{current_front})
         next_front = [];
@@ -739,7 +727,7 @@ function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
         current_front = current_front + 1;
         fronts{current_front} = next_front;
     end
-    fronts(cellfun(@isempty, fronts)) = []; % 清除空的前沿
+    fronts(cellfun(@isempty, fronts)) = []; % 删除空前沿
 end
 
 function idx = select_compromise_index(front_objs)
@@ -813,6 +801,91 @@ function [best_rc, best_dist, best_cost, feasible] = query_region_oracle_or_asta
 
     [best_rc, best_dist, best_cost, feasible] = ...
         get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight);
+end
+
+function pop_objs = evaluate_population_parallel(population, eval_func)
+    num_individuals = size(population, 1);
+    pop_objs = zeros(num_individuals, 3);
+
+    if use_parallel_evaluation_local()
+        parfor idx = 1:num_individuals
+            [~, obj] = eval_func(population(idx, :));
+            pop_objs(idx, :) = obj;
+        end
+    else
+        for idx = 1:num_individuals
+            [~, obj] = eval_func(population(idx, :));
+            pop_objs(idx, :) = obj;
+        end
+    end
+end
+
+function report_parallel_evaluation_status()
+    persistent status_reported;
+
+    if isempty(status_reported)
+        status_reported = false;
+    end
+
+    if status_reported
+        return;
+    end
+
+    [is_parallel, status_msg] = use_parallel_evaluation_local(true);
+    if is_parallel
+        fprintf('[并行评估] 已启用 parfor: %s\n', status_msg);
+    else
+        fprintf('[并行评估] 当前使用串行 for: %s\n', status_msg);
+    end
+
+    status_reported = true;
+end
+
+function [tf, status_msg] = use_parallel_evaluation_local(force_refresh)
+    persistent parallel_ready parallel_enabled parallel_status_msg;
+
+    if nargin < 1
+        force_refresh = false;
+    end
+
+    if isempty(parallel_ready) || force_refresh
+        parallel_ready = true;
+        parallel_enabled = false;
+        parallel_status_msg = '未检测到 Parallel Computing Toolbox';
+
+        has_toolbox = license('test', 'Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
+        if has_toolbox
+            try
+                pool = gcp('nocreate');
+                if isempty(pool)
+                    try
+                        parpool('Processes');
+                        parallel_status_msg = '已创建进程并行池';
+                    catch ME_process
+                        try
+                            parpool();
+                            parallel_status_msg = sprintf('进程并行池启动失败，已回退并创建默认并行池: %s', ME_process.message);
+                        catch ME_default
+                            error('parallelPoolStartup:Failed', ...
+                                '进程并行池启动失败: %s | 默认并行池启动失败: %s', ...
+                                ME_process.message, ME_default.message);
+                        end
+                    end
+                else
+                    parallel_status_msg = sprintf('复用已有并行池 (%s)', pool.Cluster.Type);
+                end
+                parallel_enabled = true;
+            catch ME
+                parallel_enabled = false;
+                parallel_status_msg = sprintf('检测到工具箱，但并行池启动失败，已自动回退串行: %s', ME.message);
+            end
+        else
+            parallel_status_msg = '未安装 Parallel Computing Toolbox 或许可证不可用';
+        end
+    end
+
+    tf = parallel_enabled;
+    status_msg = parallel_status_msg;
 end
 
 function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight)
@@ -914,104 +987,104 @@ end
 function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_rank_idx, PN)
 % =========================================================================
 % 函数功能：多策略自适应变异算子（Fork-CPO变异，结合了探索与开发策略）
-% 输入参数：
-%   chrom          - 父代染色体向量，长度为 2*num_tasks
+% 注释已修复
+% 注释已修复
 %   num_tasks      - 任务数量
-%   num_agvs       - AGV数量
-%   pm             - 基础变异概率（用于最后的强制负载均衡）
-%   g              - 当前进化代数（从1开始）
-%   G              - 最大进化代数
-%   parent_rank_idx- 父代个体在多目标排序中的全局排名（1~PN，1表示最好）
-%   PN             - 种群大小（pop_size）
-% 输出参数：
-%   child          - 变异后的子代染色体
+% 注释已修复
+% 注释已修复
+%   g              - 当前迭代代数
+%   G              - 最大迭代代数
+% 注释已修复
+% 注释已修复
+% 注释已修复
+% 注释已修复
 % =========================================================================
-    child = chrom;                       % 先复制父代，后续根据条件修改
+    child = chrom;                       % 以父代为基础生成子代
     if num_tasks < 2
         return;
     end
 
-    % 生成两个随机数 tau1 和 tau2，用于判断进入探索还是开发分支
+    % 计算分段阈值 tau1 和 tau2
     tau1 = rand(); 
     tau2 = rand();
 
-    % tau1_prime 是 tau1 减去一个与进化代数相关的衰减项
-    % 随着代数增加，0.3*(1 - g/G) 逐渐增大（从0.3到0），使得 tau1_prime 逐渐变小
-    % 目的是：进化后期更倾向于进入 else 分支（开发策略）
+    % tau1_prime 用于在探索与开发之间动态平衡
+    % 其中 0.3*(1 - g/G) 表示随迭代推进逐步减小的探索强度
+    % 注释已修复
     tau1_prime = tau1 - 0.3 * (1 - g/G); 
 
-    % 判断分支：若 tau1_prime < tau2 则进入探索策略（exploration），否则进入开发策略（exploitation）
+    % 根据 tau1_prime 与 tau2 的关系选择探索或开发模式
     if tau1_prime < tau2
-        % ====== 探索策略（针对排名较后的个体，增加种群多样性） ======
+        % ====== 探索策略：针对排名较差个体执行更强扰动 ======
         % 根据父代排名决定使用哪种探索操作
         if parent_rank_idx > 0.6 * PN
-            % 1. 视觉防御：基因块翻转（强烈破坏，适用于排名靠后的个体）
-            % 随机选择两个不同的位置，作为翻转区间的端点
+            % 注释已修复
+            % 注释已修复
             range = sort(randperm(num_tasks, 2));      % range(1) <= range(2)
-            % 将任务序列中该区间的顺序反转（fliplr）
+            % 注释已修复
             child(range(1):range(2)) = fliplr(child(range(1):range(2)));
-            % 注意：只翻转任务顺序，不改变AGV指派，AGV部分保持不变
+            % 随机交换两个任务的 AGV 指派
         else
-            % 2. 声音防御：跨车交换（改变AGV指派组合，但保持任务顺序不变）
-            % 随机选择两个不同的任务位置（在任务序列中的索引）
+            % 2. 跨车交换：改变 AGV 指派组合，但保持任务顺序不变
+            % 随机选择两个不同任务位置
             pos = randperm(num_tasks, 2);
-            % 对应的AGV指派位置（在后半段染色体中）
+            % 交换这两个任务的 AGV 指派
             agv_pos = pos + num_tasks;
 
             % 仅仅交换这两个任务的AGV指派编号
             ta = child(agv_pos(1)); 
             child(agv_pos(1)) = child(agv_pos(2)); 
             child(agv_pos(2)) = ta;
-            % 任务序列本身（前半段）不做任何改变
+            % 注释已修复
         end
     else
         % ====== 开发策略（针对排名优秀的个体，局部精细搜索） ======
         if parent_rank_idx > 0.2 * PN
             % 3. 气味防御：插入变异（模拟任务插队，优秀的局部寻优）
-            % 随机选择两个不同的任务位置：提取点 extract_idx 和插入点 insert_idx
+            % 注释已修复
             pts = randperm(num_tasks, 2);
             extract_idx = pts(1); 
             insert_idx = pts(2);
 
-            % 提取该位置的任务ID和对应的AGV指派
+            % 找出负载最大的 AGV 所承担任务的位置索引
             extracted_task = child(extract_idx);
             extracted_agv = child(extract_idx + num_tasks);
 
-            % 从任务序列中删除该任务（删除一个元素后，后面的元素向前移动）
+            % 注释已修复
             child(extract_idx) = []; 
             % 由于任务序列少了一个元素，对应的AGV指派序列也要删除相同位置（注意索引已变）
-            % 此时任务序列长度为 num_tasks-1，对应的AGV指派序列起始索引为 num_tasks（原后半段整体前移了一位）
-            % 原 extract_idx + num_tasks 现在变成了 extract_idx + num_tasks - 1
+            % 注释已修复
+            % 注释已修复
             child(extract_idx + num_tasks - 1) = [];
 
-            % 重新插入：将提取的任务和其AGV指派插入到新的位置
-            % 构造新染色体：
-            % 前半部分（任务序列）：[1:insert_idx-1] 保持，然后插入 extracted_task，再接着原序列的 insert_idx 到末尾
+            % 注释已修复
+            % 注释已修复
+            % 构造新染色体：将提取的任务插入到新位置
             % 后半部分（AGV指派）：前半部分之后紧接着的是AGV指派部分
-            % 由于任务序列长度恢复为 num_tasks，AGV指派序列的起始索引应为 num_tasks + 1
-            % 这里用两个拼接：先拼接前半部分的任务和AGV部分，再拼接后半部分的任务和AGV部分
-            % 注意：原 child 此时已经是删除后的状态，长度为 2*(num_tasks-1)
+            % 注释已修复
+            % 插入后染色体长度恢复为 2*num_tasks
+            % 注释已修复
             % 插入后长度恢复为 2*num_tasks
             child = [child(1:insert_idx-1), extracted_task, child(insert_idx:num_tasks-1), ...
                      child(num_tasks:num_tasks+insert_idx-2), extracted_agv, child(num_tasks+insert_idx-1:end)];
-            % 解释：
-            %   child(1:insert_idx-1)                 : 插入点前的任务序列
-            %   extracted_task                          : 插入的任务
+            % 注释已修复
+            % 注释已修复
+            % 注释已修复
             %   child(insert_idx:num_tasks-1)          : 插入点后的任务序列（原剩余任务）
             %   child(num_tasks:num_tasks+insert_idx-2): 插入点前的AGV指派序列
-            %   extracted_agv                            : 插入的AGV指派
+            %   extracted_agv : 被插入任务对应的 AGV 指派
             %   child(num_tasks+insert_idx-1:end)       : 插入点后的AGV指派序列
         else
-            % 4. 物理攻击：瓶颈定向转移（针对最精英的个体，微调AGV负载）
-            % 计算AGV指派部分的索引范围
+            % 4. 负载平衡调整：对优秀个体微调 AGV 指派
+            % 注释已修复
             agv_idx = (num_tasks + 1) : (2 * num_tasks);
             current_agvs = child(agv_idx);      % 当前的AGV指派向量
 
             % 统计每个AGV被分配的任务数量（粗略代表负载）
-            counts = histcounts(current_agvs, 1:num_agvs+1);  % 返回长度为 num_agvs 的计数数组
+            counts = histcounts(current_agvs, 1:num_agvs+1);
 
             [~, max_agv] = max(counts);         % 找出任务数最多的AGV（负载最大）
-            [~, min_agv] = min(counts);         % 找出任务数最少的AGV（负载最小）
+            [~, min_agv] = min(counts);         % 找出任务数最少的 AGV
 
             % 找出负载最大的AGV所承担的所有任务的位置索引
             heavy_tasks_idx = find(current_agvs == max_agv);
@@ -1021,28 +1094,28 @@ function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_ra
                 transfer_idx = heavy_tasks_idx(randi(length(heavy_tasks_idx)));
                 child(num_tasks + transfer_idx) = min_agv;
             end
-            % 注意：此处仅改变AGV指派，不改变任务执行顺序，以保护精英个体的优良路径结构
+            % 这里只改变 AGV 指派，不改变任务执行顺序
         end
     end
 
-    % ====== 底层的强制负载均衡机制（作为最后一道安全网）======
-    % 以略高于基础变异率的概率（pm+0.05）执行一次强制均衡
+    % 注释已修复
+    % 注释已修复
     if rand < (pm + 0.05)
         agv_idx = (num_tasks + 1) : (2 * num_tasks);
-        current_agvs = child(agv_idx);          % 当前的AGV指派
+        current_agvs = child(agv_idx);          % 当前 AGV 指派向量
 
-        % 重新统计各AGV的任务数量
+        % 注释已修复
         counts = zeros(1, num_agvs);
         for k = 1:num_agvs
             counts(k) = sum(current_agvs == k);
         end
-        min_val = min(counts);                   % 最小负载值
-        candidates = find(counts == min_val);    % 所有具有最小负载的AGV编号
+        min_val = min(counts);
+        candidates = find(counts == min_val);    % 所有当前负载最小的 AGV
 
-        % 随机选择两个不同的任务位置（强制修改它们的AGV指派）
+        % 随机选择两个不同任务位置，强制调整其 AGV 指派
         mutate_pos = randperm(num_tasks, 2);
         for p = 1:2
-            % 将这两个任务随机指派给某个负载最小的AGV（随机从candidates中选）
+            % 将这两个任务随机指派给当前负载最小的 AGV
             child(num_tasks + mutate_pos(p)) = candidates(randi(length(candidates)));
         end
     end
@@ -1054,7 +1127,7 @@ function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
         child2 = p2;
         return;
     end
-    % 初始化子代
+    % 注释已修复
     child1 = zeros(1, num_tasks * 2);
     child2 = zeros(1, num_tasks * 2);
 

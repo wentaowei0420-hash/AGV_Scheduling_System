@@ -1,8 +1,8 @@
 ﻿function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_schedule_optimizer( ...
     task_list, num_agvs, depots, agv_params, ga_params, agv_types)
     % =========================================================
-    % 函数定义：对比实验组 (Baseline)
-    % 算法构成：标准 NSGA-II（托举车）+ 标准 NSGA-II（叉车）
+    % 鍑芥暟瀹氫箟锛氬姣斿疄楠岀粍 (Baseline)
+    % 绠楁硶鏋勬垚锛氭棤浼樺寲鐨勬爣鍑?NSGA-II (鎵樹妇杞? + 鏍囧噯 NSGA-II (鍙夎溅)
     % =========================================================
     
     oracle_options = struct();
@@ -22,7 +22,7 @@
     best_schedule = cell(1, num_agvs);
     batch_details = cell(1, num_agvs); 
     
-    % 安全初始化所有历史记录和指标变量
+    % 銆愪慨澶?1銆戯細瀹夊叏鍒濆鍖栨墍鏈夌殑鍘嗗彶涓庢寚鏍囧彉閲?
     hist_lift_dist = zeros(1, ga_params.max_gen);
     hist_lift_time = zeros(1, ga_params.max_gen);
     hist_lift_energy = zeros(1, ga_params.max_gen);
@@ -31,19 +31,19 @@
     hist_fork_time = zeros(1, ga_params.max_gen);   
     hist_fork_energy = zeros(1, ga_params.max_gen); 
     
-    % 安全初始化前沿历史数组，防止某类任务为空时报错
+    % 銆愭柊澧炪€戯細瀹夊叏鍒濆鍖栧墠娌垮巻鍙叉暟缁勶紝闃叉鏌愮被浠诲姟涓虹┖鏃舵姤閿?
     gen_fronts_lift = {};  
     gen_fronts_fork = {};
     
     dist_lift = 0; time_lift = 0; energy_lift = 0;
     dist_fork = 0; time_fork = 0; energy_fork = 0;
     
-    %% --- 1. 托举车：标准 NSGA-II（无自适应，贪心分批） ---
+    %% --- 1. 鎵樹妇杞︼細鏍囧噯 NSGA-II (鏃犺嚜閫傚簲锛岃椽蹇冨垎鎵? ---
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
-        disp('   -> [对比组] 启动标准 NSGA-II 引擎 (托举车)...');
+        disp('   -> [瀵规瘮缁刔 鍚姩鏍囧噯 NSGA-II 寮曟搸 (鎵樹妇杞?...');
         eval_lift_moo = @(chrom) cost_func_lift_moo_baseline(chrom, tasks_lift, agvs_lift, depots, agv_params, path_oracle);
         
-        % 【修改】：接收 gen_fronts_lift
+        % 銆愪慨鏀广€戯細鎺ユ敹 gen_fronts_lift
         [pop_lift, objs_lift, fronts_lift, ~, hist_lift_dist, hist_lift_time, hist_lift_energy, gen_fronts_lift] = run_sub_nsga2_lift_baseline(tasks_lift, length(agvs_lift), ga_params, eval_lift_moo);
         
         front1_idx = fronts_lift{1}; 
@@ -69,18 +69,18 @@
         end
     end
     
-    %% --- 2. 叉车：基础版 NSGA-II（Baseline） ---
+    %% --- 2. 鍙夎溅锛氬熀纭€鐗?NSGA-II (Baseline) ---
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
-        disp('   -> [对比组] 启动标准 NSGA-II 引擎 (叉车)...');
+        disp('   -> [瀵规瘮缁刔 鍚姩鏍囧噯 NSGA-II 寮曟搸 (鍙夎溅)...');
         eval_fork = @(chrom) cost_func_fork_baseline(chrom, tasks_fork, agvs_fork, depots, agv_params, path_oracle);
         
-        % 【修改】：接收 gen_fronts_fork
+        % 銆愪慨鏀广€戯細鎺ユ敹 gen_fronts_fork
         [pop_fork, objs_fork, fronts_fork, ~, hist_fork_dist, hist_fork_time, hist_fork_energy, gen_fronts_fork] = run_sub_nsga2_fork_baseline(tasks_fork, length(agvs_fork), ga_params, eval_fork);
         
         front1_idx = fronts_fork{1}; 
         front1_objs = objs_fork(front1_idx, :);
         
-        % 统一采用 TOPSIS 寻找最均衡的解
+        % 缁熶竴閲囩敤 TOPSIS 瀵绘壘鏈€鍧囪　鐨勮В
         min_objs = min(front1_objs, [], 1);
         max_objs = max(front1_objs, [], 1);
         obj_norm = (front1_objs - min_objs) ./ (max_objs - min_objs + 1e-6);
@@ -101,7 +101,7 @@
         end
     end
     
-    %% === 统一结构体封装输出 ===
+    %% === 缁熶竴缁撴瀯浣撳皝瑁呰緭鍑?===
     metrics.lift.dist = dist_lift;       
     metrics.lift.time = time_lift;       
     metrics.lift.energy = energy_lift;   
@@ -113,12 +113,12 @@
     history.lift.dist = hist_lift_dist;
     history.lift.time = hist_lift_time;
     history.lift.energy = hist_lift_energy;
-    history.lift.gen_fronts = gen_fronts_lift; % 【新增】打包托举车历史前沿
+    history.lift.gen_fronts = gen_fronts_lift; % 銆愭柊澧炪€戞墦鍖呮墭涓捐溅鍘嗗彶鍓嶆部
     
     history.fork.dist = hist_fork_dist; 
     history.fork.time = hist_fork_time;
     history.fork.energy = hist_fork_energy;
-    history.fork.gen_fronts = gen_fronts_fork; % 打包叉车历史前沿
+    history.fork.gen_fronts = gen_fronts_fork; % 銆愭柊澧炪€戞墦鍖呭弶杞﹀巻鍙插墠娌?
     
     if ~isempty(tasks_lift)
         pareto_fronts.lift = objs_lift(fronts_lift{1}, :);
@@ -128,62 +128,62 @@
     end
 end
 
-%% ================== 托举式AGV相关函数 (Baseline) ==================
-% 【修改】：在返回值中增加 gen_fronts_history
+%% ================== 鎵樹妇寮廇GV鐩稿叧鍑芥暟 (Baseline) ==================
+% 銆愪慨鏀广€戯細鍦ㄨ繑鍥炲€间腑澧炲姞 gen_fronts_history
 function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fronts_history] = run_sub_nsga2_lift_baseline(tasks, num_sub_agvs, ga_params, eval_func)
-    % 对照组参数设定：固定且缺乏探索性
-    pc = 0.6;  % 降低交叉概率，减少优良基因组合被破坏
-    pm = 0.02; % 较低的变异率，使其更容易陷入局部最优
+    % 瀵圭収缁勫弬鏁拌瀹氾細鍥哄畾涓旂己涔忔帰绱㈡€?
+    pc = 0.6;  % 闄嶄綆浜ゅ弶姒傜巼锛屽噺灏戜紭鑹熀鍥犵粍鍚堟満浼?
+    pm = 0.02; % 鏋佷綆鐨勫彉寮傜巼锛屼娇鍏跺嚑涔庢棤娉曡烦鍑哄眬閮ㄦ渶浼?
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
     
-    % 适配三维目标历史记录
+    % 閫傞厤涓夌淮鐩爣鍘嗗彶璁板綍
     dist_hist = zeros(1, max_gen);
     time_hist = zeros(1, max_gen);
     energy_hist = zeros(1, max_gen);
     
-    % 【新增】：为每一代的帕累托前沿预分配内存
+    % 銆愭柊澧炪€戯細涓烘瘡涓€浠ｇ殑甯曠疮鎵樺墠娌块鍒嗛厤鍐呭瓨
     gen_fronts_history = cell(1, max_gen); 
     
-    % --- 初始化种群 ---
+    % --- 鍒濆鍖栫缇?---
     pop = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
         pop(i, 1:num_tasks) = randperm(num_tasks);
         pop(i, num_tasks+1:end) = randi([1, num_sub_agvs], 1, num_tasks);
     end    
     
-    % --- 初始评估 ---
+    % --- 鍒濆璇勪及 ---
     pop_objs = evaluate_population_parallel(pop, eval_func);
 
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
     
-    % --- 迭代循环 ---
+    % --- 杩唬寰幆 ---
     for gen = 1:max_gen
         offspring = zeros(pop_size, num_tasks * 2);
         i = 1;
         while i <= pop_size
-            % 锦标赛选择保持不变
+            % 閿︽爣璧涢€夋嫨淇濇寔涓嶅彉
             p1_idx = tournament_select_nsga2(rank, cd);
             p2_idx = tournament_select_nsga2(rank, cd);
             child1 = pop(p1_idx, :); 
             child2 = pop(p2_idx, :);
             
-            % 【交叉】使用简单单点交叉，并配合修复函数
+            % 銆愪氦鍙夈€戯細浣跨敤鐮村潖鎬у己銆佺己涔忔嫇鎵戜繚鎶ょ殑绠€鍗曚氦鍙夌畻瀛?
             if rand < pc
-                % 1. 任务序列：单点交叉 + 强制修复
+                % 1. 浠诲姟搴忓垪锛氬崟鐐逛氦鍙?+ 寮哄埗淇
                 cp = randi(num_tasks); 
                 temp_segment = child1(1:cp);
                 child1(1:cp) = child2(1:cp);
                 child2(1:cp) = temp_segment;
                 
-                % 关键修复：修正单点交叉后可能出现的重复解
+                % [鍏抽敭閫傞厤]锛氫慨澶嶅洜鍗曠偣浜ゅ弶浜х敓鐨勯潪娉曢噸澶嶈В
                 child1(1:num_tasks) = simple_repair(child1(1:num_tasks));
                 child2(1:num_tasks) = simple_repair(child2(1:num_tasks));
                 
-                % 2. AGV 指派：单点交叉
+                % 2. AGV鎸囨淳锛氬崟鐐逛氦鍙?
                 cp_agv = randi(num_tasks); 
                 offset = num_tasks; 
                 temp_agv_segment = child1(offset + 1 : offset + cp_agv);
@@ -191,7 +191,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 child2(offset + 1 : offset + cp_agv) = temp_agv_segment;
             end
             
-            % 【变异】：弱化为极其简单的两点随机交换
+            % 銆愬彉寮傘€戯細寮卞寲涓烘瀬鍏剁畝鍗曠殑涓ょ偣闅忔満浜ゆ崲
             if rand < pm
                 idx = randperm(num_tasks, 2);
                 tmp = child1(idx(1)); child1(idx(1)) = child1(idx(2)); child1(idx(2)) = tmp;
@@ -208,11 +208,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             i = i + 2;
         end
         
-        % --- 评估子代 ---
+        % --- 璇勪及瀛愪唬 ---
         off_objs = evaluate_population_parallel(offspring, eval_func);
 
         
-        % --- 合并、排序与精英截断 ---
+        % --- 鍚堝苟銆佹帓搴忎笌绮捐嫳鎴柇 ---
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
         
@@ -242,14 +242,14 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
-        % --- 记录收敛历史 ---
+        % --- 璁板綍鏀舵暃鍘嗗彶 ---
         front1 = fronts{1};
         rep_idx = get_representative_front_index(pop_objs, front1);
         dist_hist(gen) = pop_objs(rep_idx, 1);
         time_hist(gen) = pop_objs(rep_idx, 2);
         energy_hist(gen) = pop_objs(rep_idx, 3);
         
-        % 保存这一代第一前沿所有解的目标值（N×3 矩阵）
+        % 銆愭柊澧炪€戯細淇濆瓨杩欎竴浠ｇ殑绗竴鍓嶆部鎵€鏈夎В鐨勭洰鏍囧€?(N x 3 鐭╅樀)
         gen_fronts_history{gen} = pop_objs(front1, :);
     end
 end
@@ -279,7 +279,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
             continue;                               
         end
         
-        % FFD (First Fit Decreasing) 启发式装箱逻辑
+        % FFD (First Fit Decreasing) 鍚彂寮忚绠遍€昏緫
         batches = {};
         task_weights = tasks(my_tasks, 3);
         [~, sort_idx] = sort(task_weights, 'descend');
@@ -374,12 +374,12 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
     objectives = [f1, f2, f3];     
 end
 
-%% ================== 叉车式AGV相关函数 (Baseline NSGA-II) ==================
-% 【修改】：在返回值中增加 gen_fronts_history
+%% ================== 鍙夎溅寮廇GV鐩稿叧鍑芥暟 (Baseline NSGA-II) ==================
+% 銆愪慨鏀广€戯細鍦ㄨ繑鍥炲€间腑澧炲姞 gen_fronts_history
 function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_energy, gen_fronts_history] = run_sub_nsga2_fork_baseline(tasks, num_sub_agvs, ga_params, eval_func)
     % =========================================================================
-    % 叉车 NSGA-II 对照组（Baseline）
-    % 特点：固定交叉/变异概率，使用基础交叉与简单变异策略
+    % 鍙夎溅 NSGA-II 瀵圭収缁?(Baseline)
+    % 鐗圭偣锛氬浐瀹氫氦鍙?鍙樺紓姒傜巼锛屼娇鐢ㄥ熀纭€鍗曠偣浜ゅ弶(甯﹀己琛屼慨澶?涓庣畝鍗曚袱鐐逛氦鎹㈠彉寮?
     % =========================================================================
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
@@ -392,29 +392,29 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     cost_hist_time = zeros(1, max_gen);
     cost_hist_energy = zeros(1, max_gen);
     
-    % 【新增】：为每一代的帕累托前沿预分配内存
+    % 銆愭柊澧炪€戯細涓烘瘡涓€浠ｇ殑甯曠疮鎵樺墠娌块鍒嗛厤鍐呭瓨
     gen_fronts_history = cell(1, max_gen); 
     
-    % --- 1. 初始化种群 ---
+    % --- 1. 鍒濆鍖栫缇?---
     pop = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
         pop(i, 1:num_tasks) = randperm(num_tasks);                
         pop(i, num_tasks+1:end) = randi([1, num_sub_agvs], 1, num_tasks); 
     end
     
-    % --- 2. 初始评估（三维目标：距离、时间、能耗） ---
+    % --- 2. 鍒濆璇勪及 (涓夌淮鐩爣: 璺濈, 鏃堕棿, 鑳借€? ---
     pop_objs = evaluate_population_parallel(pop, eval_func);
 
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
     
-    % --- 3. 进化迭代循环 ---
+    % --- 3. 杩涘寲杩唬寰幆 ---
     for gen = 1:max_gen
         offspring = zeros(pop_size, num_tasks * 2);
         i = 1;
         while i <= pop_size
-            % 锦标赛选择
+            % 閿︽爣璧涢€夋嫨
             p1_idx = tournament_select_nsga2(rank, cd);
             p2_idx = tournament_select_nsga2(rank, cd);
             
@@ -422,20 +422,20 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
             child2 = pop(p2_idx, :);          
             
             % =========================================================
-            % 【降级交叉】：单点交叉 + 强制修复 (真正的基因重组，但会破坏优良结构)
+            % 銆愰檷绾т氦鍙夈€戯細鍗曠偣浜ゅ弶 + 寮哄埗淇 (鐪熸鐨勫熀鍥犻噸缁勶紝浣嗕細鐮村潖浼樿壇缁撴瀯)
             % =========================================================
             if rand < pc
-                % 1. 任务序列：单点截断交叉
+                % 1. 浠诲姟搴忓垪锛氬崟鐐规埅鏂氦鍙?
                 cp = randi(num_tasks); 
                 temp_segment = child1(1:cp);
                 child1(1:cp) = child2(1:cp);
                 child2(1:cp) = temp_segment;
                 
-                % 必要修复：消除单点交叉产生的重复或缺失任务
+                % [蹇呴』鎵ц]锛氫慨澶嶅洜鍗曠偣浜ゅ弶浜х敓鐨勪换鍔＄紪鍙烽噸澶?缂哄け
                 child1(1:num_tasks) = simple_repair(child1(1:num_tasks));
                 child2(1:num_tasks) = simple_repair(child2(1:num_tasks));
                 
-                % 2. AGV 指派：单点截断交叉
+                % 2. AGV鎸囨淳锛氬崟鐐规埅鏂氦鍙?
                 cp_agv = randi(num_tasks); 
                 offset = num_tasks; 
                 temp_agv_segment = child1(offset + 1 : offset + cp_agv);
@@ -444,21 +444,21 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
             end
             
             % =========================================================
-            % 基础变异：两点互换 + 随机修改一个任务的 AGV 指派
+            % 銆愰檷绾у彉寮傘€戯細鍩虹鐨勪袱鐐圭洸鐩簰鎹?+ 闅忔満鏀瑰彉涓€杈嗚溅鐨勬寚娲?
             % =========================================================
             if rand < pm
-                % 任务互换
+                % 浠诲姟浜掓崲
                 idx = randperm(num_tasks, 2);
                 tmp = child1(idx(1)); child1(idx(1)) = child1(idx(2)); child1(idx(2)) = tmp;
-                % 随机改变某个任务的AGV
+                % 闅忔満鏀瑰彉鏌愪釜浠诲姟鐨凙GV
                 child1(num_tasks + randi(num_tasks)) = randi(num_sub_agvs);
             end
             
             if rand < pm
-                % 任务互换
+                % 浠诲姟浜掓崲
                 idx = randperm(num_tasks, 2);
                 tmp = child2(idx(1)); child2(idx(1)) = child2(idx(2)); child2(idx(2)) = tmp;
-                % 随机改变某个任务的AGV
+                % 闅忔満鏀瑰彉鏌愪釜浠诲姟鐨凙GV
                 child2(num_tasks + randi(num_tasks)) = randi(num_sub_agvs);
             end
             
@@ -469,18 +469,18 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
             i = i + 2;                            
         end
         
-        % --- 4. 评估子代 ---
+        % --- 4. 璇勪及瀛愪唬 ---
         off_objs = evaluate_population_parallel(offspring, eval_func);
 
         
-        % --- 5. 合并与非支配排序 ---
+        % --- 5. 鍚堝苟涓庨潪鏀厤鎺掑簭 ---
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
         
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
         
-        % --- 6. 精英截断 (Elitism) ---
+        % --- 6. 绮捐嫳鎴柇 (Elitism) ---
         pop = zeros(pop_size, num_tasks * 2);
         pop_objs = zeros(pop_size, 3);
         current_idx = 1; 
@@ -506,14 +506,14 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
-        % --- 7. 记录收敛历史 ---
+        % --- 7. 璁板綍鏀舵暃鍘嗗彶 ---
         front1 = fronts{1};
         rep_idx = get_representative_front_index(pop_objs, front1);
         cost_hist_dist(gen) = pop_objs(rep_idx, 1);
         cost_hist_time(gen) = pop_objs(rep_idx, 2);
         cost_hist_energy(gen) = pop_objs(rep_idx, 3);
         
-        % 保存这一代第一前沿所有解的目标值（N×3 矩阵）
+        % 銆愭柊澧炪€戯細淇濆瓨杩欎竴浠ｇ殑绗竴鍓嶆部鎵€鏈夎В鐨勭洰鏍囧€?(N x 3 鐭╅樀)
         gen_fronts_history{gen} = pop_objs(front1, :);
     end
 end
@@ -578,7 +578,7 @@ function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, ag
     objectives = [f1, f2, f3]; 
 end
 
-%% ================== 公共函数 (Baseline) ==================
+%% ================== 鍏叡鍑芥暟 (Baseline) ==================
 function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
     pop_size = size(pop_objs, 1); fronts = cell(pop_size, 1); domination_count = zeros(pop_size, 1); dominated_set = cell(pop_size, 1); rank = zeros(pop_size, 1);
     for i = 1:pop_size
@@ -623,21 +623,21 @@ function idx = tournament_select_nsga2(rank, cd)
     end
 end
 function p = simple_repair(p)
-    % 用于修复单点交叉后产生的重复任务编号，使其恢复为合法的全排列
+    % 鐢ㄤ簬淇鍗曠偣浜ゅ弶鍚庝骇鐢熺殑閲嶅浠诲姟缂栧彿锛屼娇鍏舵仮澶嶄负鍚堟硶鐨勫叏鎺掑垪
     num = length(p);
     [~, unique_idx] = unique(p, 'first');
     
-    % 如果去重后的长度小于总长度，说明存在重复基因
+    % 濡傛灉鍘婚噸鍚庣殑闀垮害灏忎簬鎬婚暱搴︼紝璇存槑鏈夐噸澶嶅熀鍥?
     if length(unique_idx) < num
         all_vals = 1:num;
-        % 找出缺失的任务编号
+        % 鎵惧嚭缂哄け鐨勪换鍔＄紪鍙?
         missing_vals = setdiff(all_vals, p(unique_idx));
         
-        % 找出重复位置的逻辑掩码
+        % 鎵惧嚭閲嶅浣嶇疆鐨勯€昏緫鎺╃爜
         duplicate_mask = true(1, num);
         duplicate_mask(unique_idx) = false;
         
-        % 用缺失的任务号随机填充那些重复的位置
+        % 鐢ㄧ己澶辩殑浠诲姟鍙烽殢鏈哄～鍏呴偅浜涢噸澶嶇殑浣嶇疆
         p(duplicate_mask) = missing_vals(randperm(length(missing_vals)));
     end
 end
@@ -771,16 +771,16 @@ function [tf, status_msg] = use_parallel_evaluation_local(force_refresh)
                 pool = gcp('nocreate');
                 if isempty(pool)
                     try
-                        parpool('Processes');
-                        parallel_status_msg = '已创建进程并行池';
-                    catch ME_process
+                        parpool('threads');
+                        parallel_status_msg = '已创建 threads 并行池';
+                    catch ME_threads
                         try
                             parpool();
-                            parallel_status_msg = sprintf('进程并行池启动失败，已回退并创建默认并行池: %s', ME_process.message);
+                            parallel_status_msg = sprintf('threads 启动失败，已回退并创建默认并行池: %s', ME_threads.message);
                         catch ME_default
                             error('parallelPoolStartup:Failed', ...
-                                '进程并行池启动失败: %s | 默认并行池启动失败: %s', ...
-                                ME_process.message, ME_default.message);
+                                'threads 启动失败: %s | 默认并行池启动失败: %s', ...
+                                ME_threads.message, ME_default.message);
                         end
                     end
                 else
