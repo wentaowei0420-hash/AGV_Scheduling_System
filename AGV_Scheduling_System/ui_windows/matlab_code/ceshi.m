@@ -1,6 +1,8 @@
-function verify_conflict_resolution_with_3D()
+﻿function verify_conflict_resolution_with_3D()
+    style = agv_plot_theme();
+    init_agv_plot_defaults(style);
     % =========================================================================
-    % 极简多 AGV 冲突消解验证仿真 (带 X-Y-T 三维时空投影图 - 完美修复版)
+    % 鏋佺畝澶?AGV 鍐茬獊娑堣В楠岃瘉浠跨湡 (甯?X-Y-T 涓夌淮鏃剁┖鎶曞奖鍥?- 瀹岀編淇鐗?
     % =========================================================================
     clc; clear; close all;
     
@@ -8,25 +10,25 @@ function verify_conflict_resolution_with_3D()
     mapW = 30; mapH = 30;
     
     disp('====================================================');
-    disp('>> 仿真开始：经典相向冲突验证测试');
+    disp('>> 浠跨湡寮€濮嬶細缁忓吀鐩稿悜鍐茬獊楠岃瘉娴嬭瘯');
     disp('====================================================');
     
-    % --- 1. 初始化 AGV 参数 ---
+    % --- 1. 鍒濆鍖?AGV 鍙傛暟 ---
     AGVs(1).id = 1;
-    AGVs(1).pos = [15, 1];          % 起点
-    AGVs(1).target = [15, 30];      % 终点
-    AGVs(1).battery = 73;           % 电量 73%
-    AGVs(1).rem_time = 500;         % 剩余时间
-    AGVs(1).status = 'Moving_Pick'; % 状态: 取货
-    AGVs(1).step_dur = 2;           % 两次走一格 (快车)
+    AGVs(1).pos = [15, 1];          % 璧风偣
+    AGVs(1).target = [15, 30];      % 缁堢偣
+    AGVs(1).battery = 73;           % 鐢甸噺 73%
+    AGVs(1).rem_time = 500;         % 鍓╀綑鏃堕棿
+    AGVs(1).status = 'Moving_Pick'; % 鐘舵€? 鍙栬揣
+    AGVs(1).step_dur = 2;           % 涓ゆ璧颁竴鏍?(蹇溅)
     
     AGVs(2).id = 2;
-    AGVs(2).pos = [15, 30];         % 起点
-    AGVs(2).target = [15, 1];       % 终点
-    AGVs(2).battery = 86;           % 电量 86%
-    AGVs(2).rem_time = 230;         % 剩余时间
-    AGVs(2).status = 'Moving_Drop'; % 状态: 送货
-    AGVs(2).step_dur = 3;           % 三次走一格 (慢车)
+    AGVs(2).pos = [15, 30];         % 璧风偣
+    AGVs(2).target = [15, 1];       % 缁堢偣
+    AGVs(2).battery = 86;           % 鐢甸噺 86%
+    AGVs(2).rem_time = 230;         % 鍓╀綑鏃堕棿
+    AGVs(2).status = 'Moving_Drop'; % 鐘舵€? 閫佽揣
+    AGVs(2).step_dur = 3;           % 涓夋璧颁竴鏍?(鎱㈣溅)
     
     for k = 1:2
         AGVs(k).path = [];
@@ -36,25 +38,25 @@ function verify_conflict_resolution_with_3D()
         AGVs(k).path = simple_astar(AGVs(k).pos, AGVs(k).target, zeros(mapH, mapW));
     end
     
-    % 用于记录时空轨迹的数组
+    % 鐢ㄤ簬璁板綍鏃剁┖杞ㄨ抗鐨勬暟缁?
     traj_1 = []; 
     traj_2 = [];
     
-    % --- 2. 初始化 2D 可视化界面 ---
-    fig_2d = figure('Name', '2D 实时防碰撞动画', 'Position', [50, 100, 600, 600], 'Color', 'w');
+    % --- 2. 鍒濆鍖?2D 鍙鍖栫晫闈?---
+    fig_2d = figure('Name', '2D 瀹炴椂闃茬鎾炲姩鐢?, 'Position', [50, 100, 600, 600], 'Color', 'w');
     hold on; grid on; axis equal;
     axis([0.5, mapW+0.5, 0.5, mapH+0.5]);
     set(gca, 'YDir', 'reverse');
-    title('AGV 实时冲突动态消解 (2D 俯视图)', 'FontSize', 14);
+    title('AGV 瀹炴椂鍐茬獊鍔ㄦ€佹秷瑙?(2D 淇鍥?', 'FontSize', 14);
     
     colors = lines(2);
     p1 = plot(AGVs(1).pos(2), AGVs(1).pos(1), 's', 'MarkerSize', 15, 'MarkerFaceColor', colors(1,:), 'MarkerEdgeColor', 'k');
     p2 = plot(AGVs(2).pos(2), AGVs(2).pos(1), 'o', 'MarkerSize', 15, 'MarkerFaceColor', colors(2,:), 'MarkerEdgeColor', 'k');
-    line1 = plot(AGVs(1).path(:,2), AGVs(1).path(:,1), '--', 'Color', colors(1,:), 'LineWidth', 1.5);
-    line2 = plot(AGVs(2).path(:,2), AGVs(2).path(:,1), '--', 'Color', colors(2,:), 'LineWidth', 1.5);
-    legend([p1, p2], {'AGV 1 (快车)', 'AGV 2 (慢车)'}, 'Location', 'northeast');
+    line1 = plot(AGVs(1).path(:,2), AGVs(1).path(:,1), '--', 'Color', colors(1,:), 'LineWidth', 1);
+    line2 = plot(AGVs(2).path(:,2), AGVs(2).path(:,1), '--', 'Color', colors(2,:), 'LineWidth', 1);
+    legend([p1, p2], {'AGV 1 (蹇溅)', 'AGV 2 (鎱㈣溅)'}, 'Location', 'northeast');
     
-    % --- 3. 仿真主循环 ---
+    % --- 3. 浠跨湡涓诲惊鐜?---
     t = 0;
     while ~(AGVs(1).finished && AGVs(2).finished) && t < 300
         t = t + 1;
@@ -71,7 +73,7 @@ function verify_conflict_resolution_with_3D()
             
             if AGVs(k).path_idx >= size(AGVs(k).path, 1)
                 AGVs(k).finished = true;
-                fprintf('[T=%d] AGV-%d 到达终点！\n', t, k);
+                fprintf('[T=%d] AGV-%d 鍒拌揪缁堢偣锛乗n', t, k);
                 continue;
             end
             
@@ -86,7 +88,7 @@ function verify_conflict_resolution_with_3D()
             end
             
             % =========================================================
-            % [核心修复区]：单步前瞻与冲突检测
+            % [鏍稿績淇鍖篯锛氬崟姝ュ墠鐬讳笌鍐茬獊妫€娴?
             is_conflict = false;
             if isequal(next_node, other_pos) && isequal(other_next, AGVs(k).pos)
                 is_conflict = true;
@@ -94,16 +96,16 @@ function verify_conflict_resolution_with_3D()
                 is_conflict = true;
             end
             
-            will_move = true; % 物理移动允许标志位
+            will_move = true; % 鐗╃悊绉诲姩鍏佽鏍囧織浣?
             
             if is_conflict
-                fprintf('\n[T=%d] 🚨 探测到物理干涉 (AGV-%d -> AGV-%d)\n', t, k, other_id);
+                fprintf('\n[T=%d] 馃毃 鎺㈡祴鍒扮墿鐞嗗共娑?(AGV-%d -> AGV-%d)\n', t, k, other_id);
                 score_self = calculate_ahp_score(AGVs(k));
                 score_other = calculate_ahp_score(AGVs(other_id));
                 
-                % 加入 ID 作为平局决胜条件 (Tie-breaker)
+                % 鍔犲叆 ID 浣滀负骞冲眬鍐宠儨鏉′欢 (Tie-breaker)
                 if score_self < score_other || (score_self == score_other && k > other_id)
-                    fprintf('   -> ⚖️ 判决: AGV-%d 优先级低，执行重规划绕行！\n', k);
+                    fprintf('   -> 鈿栵笍 鍒ゅ喅: AGV-%d 浼樺厛绾т綆锛屾墽琛岄噸瑙勫垝缁曡锛乗n', k);
                     temp_map = zeros(mapH, mapW);
                     temp_map(other_pos(1), other_pos(2)) = 1;
                     temp_map(other_next(1), other_next(2)) = 1;
@@ -116,22 +118,22 @@ function verify_conflict_resolution_with_3D()
                         next_node = AGVs(k).path(2, :);
                         if k == 1, set(line1, 'XData', new_path(:,2), 'YData', new_path(:,1));
                         else, set(line2, 'XData', new_path(:,2), 'YData', new_path(:,1)); end
-                        % 绕路成功，本回合允许按新路线移动
+                        % 缁曡矾鎴愬姛锛屾湰鍥炲悎鍏佽鎸夋柊璺嚎绉诲姩
                     else
-                        % 绕行失败，取消本次移动，原地死等
-                        fprintf('   -> ❌ 无路可绕，原地死等。\n');
+                        % 缁曡澶辫触锛屽彇娑堟湰娆＄Щ鍔紝鍘熷湴姝荤瓑
+                        fprintf('   -> 鉂?鏃犺矾鍙粫锛屽師鍦版绛夈€俓n');
                         will_move = false; 
                         AGVs(k).move_timer = 2; 
                     end
                 else
-                    % 高优先级车取消本次移动，原地停滞鸣笛，等待对方驶离
-                    fprintf('   -> ⚖️ 判决: AGV-%d 优先级高，原地鸣笛等待对方让路。\n', k);
+                    % 楂樹紭鍏堢骇杞﹀彇娑堟湰娆＄Щ鍔紝鍘熷湴鍋滄粸楦ｇ瑳锛岀瓑寰呭鏂归┒绂?
+                    fprintf('   -> 鈿栵笍 鍒ゅ喅: AGV-%d 浼樺厛绾ч珮锛屽師鍦伴福绗涚瓑寰呭鏂硅璺€俓n', k);
                     will_move = false; 
                     AGVs(k).move_timer = 1; 
                 end
             end
             
-            % 只有被允许移动时，才推进坐标和路径索引
+            % 鍙湁琚厑璁哥Щ鍔ㄦ椂锛屾墠鎺ㄨ繘鍧愭爣鍜岃矾寰勭储寮?
             if will_move
                 AGVs(k).pos = next_node;
                 AGVs(k).path_idx = AGVs(k).path_idx + 1;
@@ -140,11 +142,11 @@ function verify_conflict_resolution_with_3D()
             % =========================================================
         end
         
-        % 记录每个时间步的时空坐标 X(列), Y(行), T
+        % 璁板綍姣忎釜鏃堕棿姝ョ殑鏃剁┖鍧愭爣 X(鍒?, Y(琛?, T
         if ~AGVs(1).finished
             traj_1 = [traj_1; AGVs(1).pos(2), AGVs(1).pos(1), t];
         else
-            traj_1 = [traj_1; AGVs(1).target(2), AGVs(1).target(1), t]; % 到达终点后继续在原位置记录时间流逝
+            traj_1 = [traj_1; AGVs(1).target(2), AGVs(1).target(1), t]; % 鍒拌揪缁堢偣鍚庣户缁湪鍘熶綅缃褰曟椂闂存祦閫?
         end
         
         if ~AGVs(2).finished
@@ -153,64 +155,64 @@ function verify_conflict_resolution_with_3D()
             traj_2 = [traj_2; AGVs(2).target(2), AGVs(2).target(1), t];
         end
         
-        % 更新动画
+        % 鏇存柊鍔ㄧ敾
         set(p1, 'XData', AGVs(1).pos(2), 'YData', AGVs(1).pos(1));
         set(p2, 'XData', AGVs(2).pos(2), 'YData', AGVs(2).pos(1));
         drawnow;
     end
     disp('====================================================');
-    disp('>> 仿真结束，准备绘制 3D 时空轨迹图...');
+    disp('>> 浠跨湡缁撴潫锛屽噯澶囩粯鍒?3D 鏃剁┖杞ㄨ抗鍥?..');
     
-    % --- 4. 绘制符合高质量学术标准的 X-Y-T 时空螺旋图 ---
-    fig_3d = figure('Name', '相向冲突消解后路径关系图', 'Position', [700, 100, 700, 700], 'Color', 'w');
+    % --- 4. 缁樺埗绗﹀悎楂樿川閲忓鏈爣鍑嗙殑 X-Y-T 鏃剁┖铻烘棆鍥?---
+    fig_3d = figure('Name', '鐩稿悜鍐茬獊娑堣В鍚庤矾寰勫叧绯诲浘', 'Position', [700, 100, 700, 700], 'Color', 'w');
     hold on; grid on;
-    view(-40, 25); % 调整为最佳的倾斜俯视透角
+    view(-40, 25); % 璋冩暣涓烘渶浣崇殑鍊炬枩淇閫忚
     
-    % 定义纯正的学术配色 (亮绿与橙色)
-    color_agv1 = [0.1, 0.9, 0.1]; % 亮绿 (快车/绕行)
-    color_agv2 = [1.0, 0.5, 0.1]; % 橙色 (慢车/直行)
+    % 瀹氫箟绾鐨勫鏈厤鑹?(浜豢涓庢鑹?
+    color_agv1 = [0.1, 0.9, 0.1]; % 浜豢 (蹇溅/缁曡)
+    color_agv2 = [1.0, 0.5, 0.1]; % 姗欒壊 (鎱㈣溅/鐩磋)
     
-    % 绘制 AGV 1 的 3D 时空实线
+    % 缁樺埗 AGV 1 鐨?3D 鏃剁┖瀹炵嚎
     p1 = plot3(traj_1(:,1), traj_1(:,2), traj_1(:,3), '-', ...
-        'Color', color_agv1, 'LineWidth', 2.5, 'DisplayName', 'AGV1');
+        'Color', color_agv1, 'LineWidth', 1, 'DisplayName', 'AGV1');
     
-    % 绘制 AGV 2 的 3D 时空实线
+    % 缁樺埗 AGV 2 鐨?3D 鏃剁┖瀹炵嚎
     p2 = plot3(traj_2(:,1), traj_2(:,2), traj_2(:,3), '-', ...
-        'Color', color_agv2, 'LineWidth', 2.5, 'DisplayName', 'AGV2');
+        'Color', color_agv2, 'LineWidth', 1, 'DisplayName', 'AGV2');
     
-    % 绘制底部的 2D 空间投影虚线 (将 Z 轴强制归零)
+    % 缁樺埗搴曢儴鐨?2D 绌洪棿鎶曞奖铏氱嚎 (灏?Z 杞村己鍒跺綊闆?
     plot3(traj_1(:,1), traj_1(:,2), zeros(size(traj_1(:,3))), '--', ...
-        'Color', color_agv1, 'LineWidth', 1.5, 'HandleVisibility', 'off');
+        'Color', color_agv1, 'LineWidth', 1, 'HandleVisibility', 'off');
     plot3(traj_2(:,1), traj_2(:,2), zeros(size(traj_2(:,3))), '--', ...
-        'Color', color_agv2, 'LineWidth', 1.5, 'HandleVisibility', 'off');
+        'Color', color_agv2, 'LineWidth', 1, 'HandleVisibility', 'off');
     
-    % 坐标轴范围与方向
+    % 鍧愭爣杞磋寖鍥翠笌鏂瑰悜
     xlim([1, 30]); 
     ylim([1, 30]); 
     zlim([0, max(t) + 10]);
     set(gca, 'YDir', 'reverse'); 
     set(gca, 'XTick', 0:5:30, 'YTick', 0:5:30, 'ZTick', 0:20:max(t)+10);
     
-    % 全局字体与边框设置 (学术标配)
+    % 鍏ㄥ眬瀛椾綋涓庤竟妗嗚缃?(瀛︽湳鏍囬厤)
     set(gca, 'FontName', 'Times New Roman', 'FontSize', 12);
-    set(gca, 'Box', 'on', 'LineWidth', 1.0); 
+    set(gca, 'Box', 'on', 'LineWidth', 1); 
     set(gca, 'GridLineStyle', '-', 'GridColor', [0.7 0.7 0.7], 'GridAlpha', 0.4); 
     
-    % 坐标轴标签 (LaTeX 斜体规范)
+    % 鍧愭爣杞存爣绛?(LaTeX 鏂滀綋瑙勮寖)
     xlabel('\it x', 'FontSize', 16, 'FontWeight', 'bold');
     ylabel('\it y', 'FontSize', 16, 'FontWeight', 'bold');
     zlabel('\it t', 'FontSize', 16, 'FontWeight', 'bold', 'Rotation', 0, 'HorizontalAlignment', 'right');
     
-    % 图例设置
+    % 鍥句緥璁剧疆
     lgd = legend([p1, p2], 'Location', 'northeast');
     set(lgd, 'FontName', 'Times New Roman', 'FontSize', 11, 'Box', 'on');
     
     rotate3d on;
-    disp('>> [完成] 3D 时空图已生成，可直接导出放入论文。');
+    disp('>> [瀹屾垚] 3D 鏃剁┖鍥惧凡鐢熸垚锛屽彲鐩存帴瀵煎嚭鏀惧叆璁烘枃銆?);
 end
 
 % =========================================================================
-% 辅助函数 1：AHP 动态优先级计算
+% 杈呭姪鍑芥暟 1锛欰HP 鍔ㄦ€佷紭鍏堢骇璁＄畻
 % =========================================================================
 function score = calculate_ahp_score(agv)
     w = [0.6370, 0.1047, 0.2583]; 
@@ -224,7 +226,7 @@ function score = calculate_ahp_score(agv)
 end
 
 % =========================================================================
-% 辅助函数 2：极简二维 A* 路径规划算法
+% 杈呭姪鍑芥暟 2锛氭瀬绠€浜岀淮 A* 璺緞瑙勫垝绠楁硶
 % =========================================================================
 function path = simple_astar(start_pos, goal_pos, obstacle_map)
     [mapH, mapW] = size(obstacle_map);
@@ -261,3 +263,5 @@ function path = simple_astar(start_pos, goal_pos, obstacle_map)
     end
     path = []; 
 end
+
+

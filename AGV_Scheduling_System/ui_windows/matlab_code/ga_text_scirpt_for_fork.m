@@ -3,6 +3,9 @@ function ga_text_scirpt_for_fork()
     close all;
     clear;
 
+    style = local_plot_style();
+    init_agv_plot_defaults(style);
+
     %% 1. 定义仿真场景与参数
     disp('>> [1/4] 正在初始化环境与物理参数...');
     global mapW mapH binaryMap
@@ -21,7 +24,7 @@ function ga_text_scirpt_for_fork()
     garage_coords_type2 = [
         47, 2; 48, 2; 49, 2;
         47, 3; 48, 3; 49, 3;
-        47, 4; 48, 4; 49, 4;
+        47, 4; 48, 4; 49, 4
     ];
 
     % 动态提取并生成所有 AGV 的起点矩阵
@@ -29,13 +32,19 @@ function ga_text_scirpt_for_fork()
     for i = 1:num_agvs
         t = agv_params(i).type;
         pos_id = agv_params(i).initial_position;
-        if pos_id <= 0, pos_id = 1; end
+        if pos_id <= 0
+            pos_id = 1;
+        end
 
         if t == 1
-            if pos_id > 8, pos_id = 1; end
+            if pos_id > 8
+                pos_id = 1;
+            end
             depots_xy(i, :) = garage_coords_type1(pos_id, :);
         else
-            if pos_id > 9, pos_id = 1; end
+            if pos_id > 9
+                pos_id = 1;
+            end
             depots_xy(i, :) = garage_coords_type2(pos_id, :);
         end
     end
@@ -47,7 +56,7 @@ function ga_text_scirpt_for_fork()
     ga_params.pop_size = 80;
     ga_params.max_gen = 250;
 
-    %% 2. 调用封装好的高级算法接口
+    %% 2. 调用调度算法接口
     disp('>> [2/4] 启动算法组进行叉车全局调度优化对比...');
 
     disp('   [执行] 实验组（改进 NSGA-II + CPO + 物理能耗建模）...');
@@ -72,13 +81,13 @@ function ga_text_scirpt_for_fork()
             metrics_exp.fork.dist, metrics_exp.fork.time, metrics_exp.fork.energy);
     fprintf('   -> 对照组: 总行驶距离 %6.1f m  |  最大完工时间 %6.1f s  |  总能耗 %6.2f\n', ...
             metrics_base.fork.dist, metrics_base.fork.time, metrics_base.fork.energy);
-    fprintf('   -> 实验组运行时间: %6.3f s  |  对照组运行时间: %6.3f s\n', ...
+    fprintf('   -> 实验组运行时间 %6.3f s  |  对照组运行时间 %6.3f s\n', ...
             exp_elapsed, base_elapsed);
     fprintf('-------------------------------------------------------------------\n');
     fprintf('   * 优化率(距离): %.1f%%  |  优化率(时间): %.1f%%  |  优化率(能耗): %.1f%%\n', ...
-            (metrics_base.fork.dist - metrics_exp.fork.dist) / metrics_base.fork.dist * 100, ...
-            (metrics_base.fork.time - metrics_exp.fork.time) / metrics_base.fork.time * 100, ...
-            (metrics_base.fork.energy - metrics_exp.fork.energy) / metrics_base.fork.energy * 100);
+            (metrics_base.fork.dist - metrics_exp.fork.dist) / max(metrics_base.fork.dist, 1e-9) * 100, ...
+            (metrics_base.fork.time - metrics_exp.fork.time) / max(metrics_base.fork.time, 1e-9) * 100, ...
+            (metrics_base.fork.energy - metrics_exp.fork.energy) / max(metrics_base.fork.energy, 1e-9) * 100);
     fprintf('   * 运行时间优化率: %.1f%%\n', ...
             (base_elapsed - exp_elapsed) / max(base_elapsed, 1e-9) * 100);
     fprintf('===================================================================\n');
@@ -86,62 +95,42 @@ function ga_text_scirpt_for_fork()
     %% 4. 绘制学术对比图
     disp('>> [4/4] 正在绘制学术收敛曲线...');
 
-    % 图 1：总行驶距离收敛对比
-    figure('Name', '叉车式AGV距离收敛对比', 'Color', 'w', 'Position', [100, 100, 700, 500]);
-    plot(hist_exp.fork.dist, 'LineWidth', 2.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
-    hold on;
-    plot(hist_base.fork.dist, 'LineWidth', 2.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
-    title('叉车式 AGV 最优行驶距离收敛对比', 'FontSize', 14);
-    xlabel('迭代次数 (Generation)', 'FontSize', 12);
-    ylabel('行驶总距离 (Distance / m)', 'FontSize', 12);
-    grid on; legend('Location', 'northeast'); axis tight;
+    plot_convergence_compare( ...
+        '叉车式AGV距离收敛对比', ...
+        '叉车式 AGV 最优行驶距离收敛对比', ...
+        '迭代次数 (Generation)', ...
+        '行驶总距离 (Distance / m)', ...
+        hist_exp.fork.dist, hist_base.fork.dist, style, [100, 100, 700, 500]);
 
-    % 图 2：最大完工时间收敛对比
-    figure('Name', '叉车式AGV完工时间收敛对比', 'Color', 'w', 'Position', [150, 150, 700, 500]);
-    plot(hist_exp.fork.time, 'LineWidth', 2.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
-    hold on;
-    plot(hist_base.fork.time, 'LineWidth', 2.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
-    title('叉车式 AGV 最大完工时间性能对比', 'FontSize', 14);
-    xlabel('迭代次数 (Generation)', 'FontSize', 12);
-    ylabel('最大完工时间 (Time / s)', 'FontSize', 12);
-    grid on; legend('Location', 'northeast'); axis tight;
+    plot_convergence_compare( ...
+        '叉车式AGV完工时间收敛对比', ...
+        '叉车式 AGV 最大完工时间性能对比', ...
+        '迭代次数 (Generation)', ...
+        '最大完工时间 (Time / s)', ...
+        hist_exp.fork.time, hist_base.fork.time, style, [150, 150, 700, 500]);
 
-    % 图 3：物理总能耗收敛对比
-    figure('Name', '叉车式AGV物理总能耗收敛对比', 'Color', 'w', 'Position', [200, 200, 700, 500]);
-    plot(hist_exp.fork.energy, 'LineWidth', 2.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
-    hold on;
-    plot(hist_base.fork.energy, 'LineWidth', 2.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
-    title('叉车式 AGV 物理总能耗性能对比', 'FontSize', 14);
-    xlabel('迭代次数 (Generation)', 'FontSize', 12);
-    ylabel('系统总能耗 (Energy)', 'FontSize', 12);
-    grid on; legend('Location', 'northeast'); axis tight;
-
-    %% 绘制 3D Pareto 解集对比图（以叉车为例）
-    front_base = pareto_baseline.fork;
-    front_impr = pareto_improved.fork;
+    plot_convergence_compare( ...
+        '叉车式AGV物理总能耗收敛对比', ...
+        '叉车式 AGV 物理总能耗性能对比', ...
+        '迭代次数 (Generation)', ...
+        '系统总能耗 (Energy)', ...
+        hist_exp.fork.energy, hist_base.fork.energy, style, [200, 200, 700, 500]);
 
     figure('Name', 'Pareto Front Comparison', 'Color', 'w', 'Position', [100, 100, 1000, 450]);
 
     subplot(1, 2, 1);
-    scatter3(front_base(:,1), front_base(:,2), front_base(:,3), 80, 'r', '*');
-    grid on;
-    view(45, 25);
-    set(gca, 'FontName', 'Times New Roman', 'FontSize', 10);
-    xlabel('最短行驶距离 / m', 'FontSize', 12, 'FontName', '宋体');
-    ylabel('最大完工时间 / s', 'FontSize', 12, 'FontName', '宋体');
-    zlabel('最小总能耗 / J', 'FontSize', 12, 'FontName', '宋体');
-    title('(a) 标准 NSGA-II 算法', 'FontSize', 14, 'FontName', '宋体');
+    scatter3(pareto_baseline.fork(:,1), pareto_baseline.fork(:,2), pareto_baseline.fork(:,3), ...
+        70, style.base_color, 'filled', 'MarkerFaceAlpha', 0.85);
+    style_pareto_axes(style, '(a) 标准 NSGA-II 算法');
 
     subplot(1, 2, 2);
-    scatter3(front_impr(:,1), front_impr(:,2), front_impr(:,3), 80, 'r', '*');
-    grid on;
-    view(45, 25);
-    set(gca, 'FontName', 'Times New Roman', 'FontSize', 10);
-    xlabel('最短行驶距离 / m', 'FontSize', 12, 'FontName', '宋体');
-    ylabel('最大完工时间 / s', 'FontSize', 12, 'FontName', '宋体');
-    zlabel('最小总能耗 / J', 'FontSize', 12, 'FontName', '宋体');
-    title('(b) 改进 NSGA-II 算法', 'FontSize', 14, 'FontName', '宋体');
-    sgtitle('标准 NSGA-II 与改进 NSGA-II Pareto 前沿对比（叉车式AGV）', 'FontSize', 15, 'FontWeight', 'bold', 'FontName', '宋体');
+    scatter3(pareto_improved.fork(:,1), pareto_improved.fork(:,2), pareto_improved.fork(:,3), ...
+        70, style.exp_color, 'filled', 'MarkerFaceAlpha', 0.85);
+    style_pareto_axes(style, '(b) 改进 NSGA-II 算法');
+
+    sgtitle('标准 NSGA-II 与改进 NSGA-II Pareto 前沿对比（叉车式 AGV）', ...
+        'FontSize', style.sgtitle_font, 'FontWeight', 'bold', 'FontName', style.cn_font, 'Interpreter', 'none');
+    apply_agv_plot_theme(gcf, style);
 
     evaluate_and_plot_moea(hist_exp.fork.gen_fronts, hist_base.fork.gen_fronts);
 
@@ -152,7 +141,50 @@ function ga_text_scirpt_for_fork()
             fprintf(' AGV-%02d (叉车式):\n', k);
             fprintf('   - 实验组 %s\n', mat2str(sched_exp{k}));
             fprintf('   - 对照组 %s\n', mat2str(sched_base{k}));
+            if k <= numel(batch_exp) && ~isempty(batch_exp{k})
+                fprintf('   - 实验组批次信息: %s\n', mat2str(batch_exp{k}));
+            end
+            if k <= numel(batch_base) && ~isempty(batch_base{k})
+                fprintf('   - 对照组批次信息: %s\n', mat2str(batch_base{k}));
+            end
         end
     end
     disp('==================================================================');
 end
+
+function style = local_plot_style()
+    style = agv_plot_theme('paper');
+end
+
+function plot_convergence_compare(fig_name, fig_title, x_label, y_label, exp_data, base_data, style, fig_pos)
+    figure('Name', fig_name, 'Color', 'w', 'Position', fig_pos);
+    plot(exp_data, 'LineWidth', style.line_width, 'Color', style.exp_color, ...
+        'DisplayName', '实验组（改进 NSGA-II 算法）');
+    hold on;
+    plot(base_data, 'LineWidth', style.line_width, 'Color', style.base_color, ...
+        'LineStyle', '--', 'DisplayName', '对照组（标准 NSGA-II 算法）');
+    title(fig_title, 'FontSize', style.title_font, 'FontWeight', 'bold', 'FontName', style.cn_font, 'Interpreter', 'none');
+    xlabel(x_label, 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
+    ylabel(y_label, 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
+    set(gca, 'FontName', style.en_font, 'FontSize', style.axis_font, 'GridAlpha', style.grid_alpha, 'LineWidth', 1);
+    grid on;
+    legend('Location', 'northeast', 'FontSize', style.axis_font, 'FontName', style.cn_font, 'Interpreter', 'none');
+    axis tight;
+    apply_agv_plot_theme(gcf, style);
+end
+
+function style_pareto_axes(style, fig_title)
+    grid on;
+    view(45, 25);
+    set(gca, 'FontName', style.en_font, 'FontSize', style.axis_font, 'GridAlpha', style.grid_alpha, 'LineWidth', 1);
+    xlabel('最短行驶距离 / m', 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
+    ylabel('最大完工时间 / s', 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
+    zlabel('最小总能耗 / J', 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
+    title(fig_title, 'FontSize', style.title_font, 'FontWeight', 'bold', 'FontName', style.cn_font, 'Interpreter', 'none');
+end
+
+
+
+
+
+

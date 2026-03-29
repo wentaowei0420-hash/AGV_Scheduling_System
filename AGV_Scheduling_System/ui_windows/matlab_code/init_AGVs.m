@@ -1,19 +1,21 @@
-function [AGVs, props, path_colors] = init_AGVs(num_agvs, depots, agv_schedules, agv_params, agv_types, ax)
-    % 初始化 AGV 结构体数组及其图形对象 (多任务队列适配版)
+﻿function [AGVs, props, path_colors] = init_AGVs(num_agvs, depots, agv_schedules, agv_params, agv_types, ax)
+    style = agv_plot_theme();
+    init_agv_plot_defaults(style);
+    % 鍒濆鍖?AGV 缁撴瀯浣撴暟缁勫強鍏跺浘褰㈠璞?(澶氫换鍔￠槦鍒楅€傞厤鐗?
     
     AGVs = struct([]);
     path_colors = lines(num_agvs);
     
     props(1).charge_stations = [
-        xy2rc([2, 2]);  % 左上角充电桩
-        xy2rc([2, 3]);  % 右上角充电桩
-        xy2rc([3, 2]);  % 左下角充电桩
-        xy2rc([3, 3])   % 右下角充电桩
+        xy2rc([2, 2]);  % 宸︿笂瑙掑厖鐢垫々
+        xy2rc([2, 3]);  % 鍙充笂瑙掑厖鐢垫々
+        xy2rc([3, 2]);  % 宸︿笅瑙掑厖鐢垫々
+        xy2rc([3, 3])   % 鍙充笅瑙掑厖鐢垫々
     ];
-    props(2).charge = xy2rc([39, 2]);  % 类型 2 AGV 的充电桩位置
+    props(2).charge = xy2rc([39, 2]);  % 绫诲瀷 2 AGV 鐨勫厖鐢垫々浣嶇疆
     
     for k = 1:num_agvs
-        % --- 基础属性字段 ---
+        % --- 鍩虹灞炴€у瓧娈?---
         AGVs(k).id = k;                                
         AGVs(k).type = agv_types(k);                    
         AGVs(k).pos = depots(k, :);                     
@@ -30,31 +32,33 @@ function [AGVs, props, path_colors] = init_AGVs(num_agvs, depots, agv_schedules,
         AGVs(k).move_timer = 0;                           
         AGVs(k).home_pos = depots(k, :);                  
         
-        % 【修改区】：多任务批处理与转弯统计相关的新增字段初始化
-        AGVs(k).payload_weight = 0;         % 当前实时载重
-        AGVs(k).pick_queue = [];            % 取货任务队列
-        AGVs(k).drop_queue = [];            % 卸货任务队列
-        AGVs(k).active_task_id = 0;         % 当前正在执行的子任务ID
-        AGVs(k).interrupted_status = '';    % 记忆断电前的状态
+        % 銆愪慨鏀瑰尯銆戯細澶氫换鍔℃壒澶勭悊涓庤浆寮粺璁＄浉鍏崇殑鏂板瀛楁鍒濆鍖?
+        AGVs(k).payload_weight = 0;         % 褰撳墠瀹炴椂杞介噸
+        AGVs(k).pick_queue = [];            % 鍙栬揣浠诲姟闃熷垪
+        AGVs(k).drop_queue = [];            % 鍗歌揣浠诲姟闃熷垪
+        AGVs(k).active_task_id = 0;         % 褰撳墠姝ｅ湪鎵ц鐨勫瓙浠诲姟ID
+        AGVs(k).interrupted_status = '';    % 璁板繂鏂數鍓嶇殑鐘舵€?
         AGVs(k).yield_resume_status = '';   % temporary resume state after yielding
-        AGVs(k).total_turns = 0;            % 转弯统计
-        AGVs(k).last_dir = [0, 0];          % 运动矢量记忆
+        AGVs(k).total_turns = 0;            % 杞集缁熻
+        AGVs(k).last_dir = [0, 0];          % 杩愬姩鐭㈤噺璁板繂
 
         
-        % --- 图形对象 ---
+        % --- 鍥惧舰瀵硅薄 ---
         r = AGVs(k).pos(1); c = AGVs(k).pos(2);           
         AGVs(k).path_line = plot(ax, NaN, NaN, '-', ...
-            'Color', path_colors(k,:), 'LineWidth', 2, 'LineStyle', '--');
+            'Color', path_colors(k,:), 'LineWidth', 1, 'LineStyle', '--');
         
         edge_col = 'k';
         if AGVs(k).type == 2
             edge_col = 'b';
         end
         AGVs(k).handle = rectangle(ax, 'Position', [c-0.9, r-0.9, 0.8, 0.8], ...
-            'Curvature', 0.2, 'FaceColor', 'g', 'EdgeColor', edge_col, 'LineWidth', 2);
+            'Curvature', 0.2, 'FaceColor', 'g', 'EdgeColor', edge_col, 'LineWidth', 1);
         
         AGVs(k).text = text(ax, c-0.5, r-0.5, '', ...
             'Color', 'k', 'HorizontalAlignment', 'center', ...
             'FontSize', 8, 'FontWeight', 'bold');
     end
 end
+
+

@@ -1,4 +1,6 @@
-function run_visualization_loop_time_explicit_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+﻿function run_visualization_loop_time_explicit_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+    style = agv_plot_theme();
+    init_agv_plot_defaults(style);
     global mapW mapH;
     global costmap_type1 costmap_type2;
 

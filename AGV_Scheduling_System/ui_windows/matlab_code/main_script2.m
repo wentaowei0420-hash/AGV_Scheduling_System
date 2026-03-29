@@ -1,81 +1,81 @@
-%% 主脚本：多AGV路径规划仿真
-% 该脚本演示如何使用带转向惩罚和时间窗的A*算法为多台AGV规划无冲突路径。
-% 依赖函数：
+﻿%% 涓昏剼鏈細澶欰GV璺緞瑙勫垝浠跨湡
+% 璇ヨ剼鏈紨绀哄浣曚娇鐢ㄥ甫杞悜鎯╃綒鍜屾椂闂寸獥鐨凙*绠楁硶涓哄鍙癆GV瑙勫垝鏃犲啿绐佽矾寰勩€?
+% 渚濊禆鍑芥暟锛?
 %   multiAGV_planner.m
-%   astar_turn_time.m (内嵌于 multiAGV_planner 中)
-%   heuristic.m (内嵌)
-%   countTurns.m (自定义，见本文件末尾)
+%   astar_turn_time.m (鍐呭祵浜?multiAGV_planner 涓?
+%   heuristic.m (鍐呭祵)
+%   countTurns.m (鑷畾涔夛紝瑙佹湰鏂囦欢鏈熬)
 
 clear; clc; close all;
-rng(42);  % 固定随机种子，保证结果可复现
+rng(42);  % 鍥哄畾闅忔満绉嶅瓙锛屼繚璇佺粨鏋滃彲澶嶇幇
 
-%% 1. 地图设置
-mapSize = [50, 50];          % 地图尺寸
-p_obstacle = 0.2;            % 障碍物概率
+%% 1. 鍦板浘璁剧疆
+mapSize = [50, 50];          % 鍦板浘灏哄
+p_obstacle = 0.2;            % 闅滅鐗╂鐜?
 randMat = rand(mapSize);
-map = randMat < p_obstacle;   % 障碍为1
-map = double(map);            % 转换为double
+map = randMat < p_obstacle;   % 闅滅涓?
+map = double(map);            % 杞崲涓篸ouble
 
-%% 2. AGV定义
-% 每个AGV包含起点、终点、优先级（数值越小优先级越高）
+%% 2. AGV瀹氫箟
+% 姣忎釜AGV鍖呭惈璧风偣銆佺粓鐐广€佷紭鍏堢骇锛堟暟鍊艰秺灏忎紭鍏堢骇瓒婇珮锛?
 agvs(1) = struct('start', [2, 2], 'goal', [48, 48], 'priority', 1);
 agvs(2) = struct('start', [2, 48], 'goal', [48, 2], 'priority', 2);
 agvs(3) = struct('start', [25, 2], 'goal', [25, 48], 'priority', 3);
 
-% 确保所有起点和终点不是障碍
+% 纭繚鎵€鏈夎捣鐐瑰拰缁堢偣涓嶆槸闅滅
 for i = 1:length(agvs)
     map(agvs(i).start(1), agvs(i).start(2)) = 0;
     map(agvs(i).goal(1), agvs(i).goal(2)) = 0;
 end
 
-%% 3. 转弯惩罚值（所有AGV使用相同值）
+%% 3. 杞集鎯╃綒鍊硷紙鎵€鏈堿GV浣跨敤鐩稿悓鍊硷級
 turnPenalty = 0.6;
-%% 4. 调用多AGV规划器
-fprintf('开始规划 %d 台AGV的路径...\n', length(agvs));
+%% 4. 璋冪敤澶欰GV瑙勫垝鍣?
+fprintf('寮€濮嬭鍒?%d 鍙癆GV鐨勮矾寰?..\n', length(agvs));
 try
     [paths, costs] = multiAGV_planner(map, agvs, turnPenalty);
-    fprintf('规划成功！\n');
+    fprintf('瑙勫垝鎴愬姛锛乗n');
 catch ME
-    error('规划失败: %s', ME.message);
+    error('瑙勫垝澶辫触: %s', ME.message);
 end
 
-%% 5. 统计信息输出
-fprintf('\n===== 路径规划结果 =====\n');
+%% 5. 缁熻淇℃伅杈撳嚭
+fprintf('\n===== 璺緞瑙勫垝缁撴灉 =====\n');
 for i = 1:length(paths)
     path = paths{i};
-    % 计算转弯次数（仅基于坐标，忽略时间）
+    % 璁＄畻杞集娆℃暟锛堜粎鍩轰簬鍧愭爣锛屽拷鐣ユ椂闂达級
     turns = countTurns(path(:,1:2));
-    % 路径长度（总代价）已由costs给出
-    fprintf('AGV %d (优先级 %d): 总代价 = %.2f, 转弯次数 = %d, 路径长度 = %d 步\n', ...
+    % 璺緞闀垮害锛堟€讳唬浠凤級宸茬敱costs缁欏嚭
+    fprintf('AGV %d (浼樺厛绾?%d): 鎬讳唬浠?= %.2f, 杞集娆℃暟 = %d, 璺緞闀垮害 = %d 姝n', ...
             i, agvs(i).priority, costs(i), turns, size(path,1)-1);
 end
 
-%% 6. 可视化
-figure('Name', '多AGV路径规划结果', 'NumberTitle', 'off', 'Position', [100 100 900 700]);
+%% 6. 鍙鍖?
+figure('Name', '澶欰GV璺緞瑙勫垝缁撴灉', 'NumberTitle', 'off', 'Position', [100 100 900 700]);
 
-% 显示地图
+% 鏄剧ず鍦板浘
 imagesc(map);
-colormap(1-gray);  % 白色自由空间，黑色障碍
+colormap(1-gray);  % 鐧借壊鑷敱绌洪棿锛岄粦鑹查殰纰?
 hold on;
 
-% 为每个AGV分配不同颜色
+% 涓烘瘡涓狝GV鍒嗛厤涓嶅悓棰滆壊
 colors = lines(length(paths));
 
-% 绘制所有AGV的路径
+% 缁樺埗鎵€鏈堿GV鐨勮矾寰?
 for i = 1:length(paths)
     path = paths{i};
-    % 提取坐标（忽略时间）
+    % 鎻愬彇鍧愭爣锛堝拷鐣ユ椂闂达級
     coords = path(:,1:2);
-    % 绘制路径线
-    plot(coords(:,2), coords(:,1), 'Color', colors(i,:), 'LineWidth', 2);
-    % 标记起点和终点
+    % 缁樺埗璺緞绾?
+    plot(coords(:,2), coords(:,1), 'Color', colors(i,:), 'LineWidth', 1);
+    % 鏍囪璧风偣鍜岀粓鐐?
     plot(coords(1,2), coords(1,1), 'o', 'MarkerSize', 8, ...
          'MarkerFaceColor', colors(i,:), 'MarkerEdgeColor', 'k');
     plot(coords(end,2), coords(end,1), 's', 'MarkerSize', 8, ...
          'MarkerFaceColor', colors(i,:), 'MarkerEdgeColor', 'k');
 end
 
-% 添加栅格线（可选）
+% 娣诲姞鏍呮牸绾匡紙鍙€夛級
 ax = gca;
 ax.XTick = 0.5:1:size(map,2)+0.5;
 ax.YTick = 0.5:1:size(map,1)+0.5;
@@ -85,17 +85,19 @@ grid on;
 ax.GridColor = [0.7 0.7 0.7];
 ax.GridAlpha = 0.5;
 
-% 图例和标题
-legendEntries = arrayfun(@(i) sprintf('AGV %d (优先级 %d)', i, agvs(i).priority), ...
+% 鍥句緥鍜屾爣棰?
+legendEntries = arrayfun(@(i) sprintf('AGV %d (浼樺厛绾?%d)', i, agvs(i).priority), ...
                          1:length(agvs), 'UniformOutput', false);
-legend([legendEntries, {'起点', '终点'}], 'Location', 'best');
-title(sprintf('多AGV路径规划（转弯惩罚 = %.2f）', turnPenalty));
+legend([legendEntries, {'璧风偣', '缁堢偣'}], 'Location', 'best');
+title(sprintf('澶欰GV璺緞瑙勫垝锛堣浆寮儵缃?= %.2f锛?, turnPenalty));
 axis equal tight;
 hold off;
 
-%% 辅助函数：计算路径转弯次数
+%% 杈呭姪鍑芥暟锛氳绠楄矾寰勮浆寮鏁?
 function turns = countTurns(path)
-    % path: N×2 矩阵 [行,列]
+    style = agv_plot_theme();
+    init_agv_plot_defaults(style);
+    % path: N脳2 鐭╅樀 [琛?鍒梋
     turns = 0;
     if size(path, 1) > 2
         prev_dir = path(2, :) - path(1, :);
@@ -108,3 +110,5 @@ function turns = countTurns(path)
         end
     end
 end
+
+
