@@ -51,6 +51,7 @@ function ga_text_scirpt_for_fork()
     depots = xy2rc(depots_xy);
 
     task_list = MES_Order_System_text_for_fork();
+    % ga_path_debug_probe(task_list, depots, agv_types, agv_params, 'fork');
 
     % --- GA 参数 ---
     ga_params.pop_size = 80;
@@ -182,8 +183,6 @@ function style_pareto_axes(style, fig_title)
     zlabel('最小总能耗 / J', 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
     title(fig_title, 'FontSize', style.title_font, 'FontWeight', 'bold', 'FontName', style.cn_font, 'Interpreter', 'none');
 end
-
-
 
 
 

@@ -48,6 +48,7 @@ function ga_text_scirpt_for_lift()
     depots = xy2rc(depots_xy);
 
     task_list = MES_Order_System_text_for_lift();
+    % ga_path_debug_probe(task_list, depots, agv_types, agv_params, 'lift');
     if isempty(task_list)
         error('[致命错误] 传入的任务列表为空，没有需要执行的任务。');
     end
@@ -208,8 +209,6 @@ function print_batch_info(batch_info, agv_types)
         fprintf('--------------------------------------------------\n');
     end
 end
-
-
 
 
 

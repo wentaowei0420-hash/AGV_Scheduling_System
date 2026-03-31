@@ -1,93 +1,59 @@
 ﻿function [best_schedule, batch_details, hist_lift, hist_fork, dist_lift, dist_fork] = ga_schedule_optimizer_update_de(task_list, num_agvs, depots, agv_params, weights, ga_params, agv_types)
-%% 初始化参数
     idx_lift_tasks = task_list(:,2) <= 12;
-    % [数据剥离] 提取目标工位 ID <= 12 的任务逻辑索引（判定为小件/托举车专属任务）    
     idx_fork_tasks = task_list(:,2) > 12;
-    % 提取小件任务（工位 ID <= 12）
     tasks_lift = task_list(idx_lift_tasks, :);
-    % 提取大件任务（工位 ID > 12）
     tasks_fork = task_list(idx_fork_tasks, :);
-    % 根据任务类型划分托举车任务池和叉车任务池
     agvs_lift = find(agv_types == 1); 
-    % 获取所有托举式 AGV 的全局索引
     agvs_fork = find(agv_types == 2); 
-    % 获取所有叉车式 AGV 的全局索引
     best_schedule = cell(1, num_agvs);
-    % 初始化全局最优调度结果容器
     batch_details = cell(1, num_agvs); 
-    % 初始化批次信息容器
-    % 安全初始化输出变量，避免某类任务为空时报错
     hist_lift = zeros(1, ga_params.max_gen);
     hist_fork = zeros(1, ga_params.max_gen);
     dist_lift = 0;
     dist_fork = 0;
-%% 托举式AGV相关操作    
-    % --- 1. 托举车：启用 NSGA-II 多目标引擎 ---
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
-        % 仅当存在小件任务且有托举车可用时才启动该分支
         disp('   -> 启动 NSGA-II 引擎优化托举车（多目标：距离、时间、负载率）...');
-        % 输出托举车优化日志
         eval_lift_moo = @(chrom) cost_func_lift_moo(chrom, tasks_lift, agvs_lift, depots, agv_params);
-        % 定义托举车目标评估闭包
         [pop_lift, objs_lift, fronts_lift, ~, hist_lift] = run_sub_nsga2_lift_with_de(tasks_lift, length(agvs_lift), ga_params, eval_lift_moo);
-        % 核心调用：执行托举车 NSGA-II
-        % 注释已修复
         front1_idx = fronts_lift{1}; 
-        % 提取第一前沿的全局索引
         front1_objs = objs_lift(front1_idx, :);
-        % 依据上述索引，提取出第一梯队所有个体的真实目标得分矩阵  
-        % TOPSIS 折中解选择开始
         min_objs = min(front1_objs, [], 1);
         max_objs = max(front1_objs, [], 1);
         obj_norm = (front1_objs - min_objs) ./ (max_objs - min_objs + 1e-6);
         compromise_scores = sqrt(sum(obj_norm.^2, 2));
-        % 计算候选解到理想点的综合偏差
         [~, best_idx_in_front1] = min(compromise_scores);
-        % 在第一前沿中，挑出综合偏差得分最小（最折中、最均衡）的那个解的次级索引      
         best_lift_chrom = pop_lift(front1_idx(best_idx_in_front1), :);
         [sched_lift, best_objs_lift, batch_info_lift] = eval_lift_moo(best_lift_chrom);
-        dist_lift = best_objs_lift(1); % f1 为总距离
-        % 拿着这个次级索引，反向追溯到全局种群库，提取出这个“天选之子”的染色体基因串        
-        % 对天选染色体执行一次解码，剥离出其实际对应的局部任务排班表
+        dist_lift = best_objs_lift(1);
         for i = 1:length(agvs_lift)
             best_schedule{agvs_lift(i)} = sched_lift{i};
-            batch_details{agvs_lift(i)} = batch_info_lift{i}; % 【新增】：映射到全局输出
+            batch_details{agvs_lift(i)} = batch_info_lift{i};
         end
     end
-%% 叉车式AGV相关操作   
-    % --- 2. 叉车：保留 HGA 单目标引擎 ---
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
-    % 仅当存在大件任务且有叉车可用时才启动该分支
         disp('   -> 启动 HGA 引擎优化叉车（单目标：最短路径 + 时间惩罚）...');
-        % 输出叉车优化日志
         eval_fork = @(chrom) cost_func_fork(chrom, tasks_fork, agvs_fork, depots, agv_params, weights);
-        % 定义叉车专属目标评估函数
         [sched_fork, best_cost_fork, hist_fork] = run_sub_hga(tasks_fork, length(agvs_fork), ga_params, eval_fork);
         dist_fork = best_cost_fork;
-        % 核心调用：执行叉车 HGA 并获得最佳排班结果
         for i = 1:length(agvs_fork)
             best_schedule{agvs_fork(i)} = sched_fork{i};
-            % 将叉车局部排班映射回全局结果
         end
     end
 end
-%% 托举式AGV相关函数
 function [pop, pop_objs, fronts, cd, dist_hist] = run_sub_nsga2_lift_with_de(tasks, num_sub_agvs, ga_params, eval_func)
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
     dist_hist = zeros(1, max_gen);
-    pc_max = 0.8; pc_min = 0.6;  % 交叉概率范围
-    pm_max = 0.2; pm_min = 0.05; % 变异概率范围    
+    pc_max = 0.8; pc_min = 0.6;
+    pm_max = 0.2; pm_min = 0.05;
     F_max = 1.2; F_min = 0.4;
-    %% 注释已修复
     pop = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
         pop(i, 1:num_tasks) = randperm(num_tasks);
         pop(i, num_tasks+1:end) = randi([1, num_sub_agvs], 1, num_tasks);
     end    
     
-    %% 注释已修复
     pop_objs = zeros(pop_size, 3);
     for i = 1:pop_size
         [~, obj] = eval_func(pop(i,:));
@@ -97,11 +63,10 @@ function [pop, pop_objs, fronts, cd, dist_hist] = run_sub_nsga2_lift_with_de(tas
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
 
-    %% 迭代循环
     for gen = 1:max_gen
         offspring = zeros(pop_size, num_tasks * 2);
-        avg_rank = mean(rank);  % 当前种群的平均 Rank
-        min_rank = min(rank);   % 当前种群的最优 Rank
+        avg_rank = mean(rank);
+        min_rank = min(rank);
         F = F_max - (F_max - F_min) * (gen / max_gen);
         i = 1;
         while i <= pop_size
@@ -114,20 +79,18 @@ function [pop, pop_objs, fronts, cd, dist_hist] = run_sub_nsga2_lift_with_de(tas
             rank_p2 = rank(p2_idx);
             better_rank = min(rank_p1, rank_p2);
             
-            % 动态调整交叉和变异概率
             pc = pc_min + (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
             pm1 = pm_min + (pm_max - pm_min) * (rank_p1 - min_rank) / (avg_rank - min_rank + 1e-6);
             pm2 = pm_min + (pm_max - pm_min) * (rank_p2 - min_rank) / (avg_rank - min_rank + 1e-6);
             
-            % DE的变异和交叉操作
             if rand < pc
                 [child1, child2] = crossover_de(pop(p1_idx,:), pop(p2_idx,:), num_tasks);
             end
             if rand < pm1
-                child1 = mutate_hybrid_de_cpo(child1, num_tasks, num_sub_agvs, pop, F, gen, max_gen, rank, rank_p1);  % 使用DE变异
+                child1 = mutate_hybrid_de_cpo(child1, num_tasks, num_sub_agvs, pop, F, gen, max_gen, rank, rank_p1);
             end
             if rand < pm2
-                child2 = mutate_hybrid_de_cpo(child1, num_tasks, num_sub_agvs, pop, F, gen, max_gen, rank, rank_p1);  % 使用DE变异
+                child2 = mutate_hybrid_de_cpo(child1, num_tasks, num_sub_agvs, pop, F, gen, max_gen, rank, rank_p1);
             end
             
             offspring(i,:) = child1;
@@ -135,21 +98,18 @@ function [pop, pop_objs, fronts, cd, dist_hist] = run_sub_nsga2_lift_with_de(tas
             i = i + 2;
         end        
         
-        %% 评估子代
         off_objs = zeros(pop_size, 3);
         for i = 1:pop_size
             [~, obj] = eval_func(offspring(i,:));
             off_objs(i,:) = obj;
         end
         
-        %% 注释已修复
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
         
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
         
-        %% 精英选择
         pop = zeros(pop_size, num_tasks * 2);
         pop_objs = zeros(pop_size, 3);
         current_idx = 1;
@@ -172,11 +132,9 @@ function [pop, pop_objs, fronts, cd, dist_hist] = run_sub_nsga2_lift_with_de(tas
             f = f + 1;
         end
         
-        %% 更新新的 Rank 和拥挤距离
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
-        % 注释已修复
         front1 = fronts{1};
         dist_hist(gen) = min(pop_objs(front1, 1));
     end
@@ -186,12 +144,11 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     
-    % 注释已修复
     task_seq = chromosome(1:num_tasks); 
     agv_assign = chromosome(num_tasks+1:end);    
     
-    schedules = cell(1, num_agvs); % 存放 AGV 排班表
-    batch_info = cell(1, num_agvs); % 批次信息
+    schedules = cell(1, num_agvs);
+    batch_info = cell(1, num_agvs);
     agv_dists = zeros(1, num_agvs);               
     agv_times = zeros(1, num_agvs);               
     max_load_capacity = 80;                       
@@ -201,90 +158,77 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
         real_agv_id = agv_ids(k);                  
         curr_agv = agv_params(real_agv_id);                
 
-        % 注释已修复
         my_tasks = task_seq(agv_assign == k);
         
         if isempty(my_tasks)
-            schedules{k} = []; % 如果没有任务分配给此AGV，则跳过
+            schedules{k} = [];
             continue;                               
         end
         
-        % 注释已修复
         my_tasks = my_tasks(my_tasks > 0 & my_tasks <= num_tasks);
         
-        % 注释已修复
         if isempty(my_tasks)
-            schedules{k} = []; % 如果没有有效的任务索引，跳过
+            schedules{k} = [];
             continue;  
         end
         
-        % 获取有效的任务 ID
-        real_task_ids = tasks(my_tasks, 1)'; % 获取任务ID
+        real_task_ids = tasks(my_tasks, 1)';
         schedules{k} = real_task_ids;
         
-        % FFD (First Fit Decreasing) 启发式装箱逻辑
         batches = {};
         task_weights = tasks(my_tasks, 3);
         [~, sort_idx] = sort(task_weights, 'descend');
         sorted_my_tasks = my_tasks(sort_idx);
-        batch_weights_list = []; % 记录每个批次的总重
+        batch_weights_list = [];
         
-        % 首次适应分配（First Fit）
         for t = 1:length(sorted_my_tasks)
             row_idx = sorted_my_tasks(t);
             w = tasks(row_idx, 3);
             
             placed = false;
-            % 注释已修复
             for b = 1:length(batches)
                 if batch_weights_list(b) + w <= max_load_capacity
-                    batches{b}(end+1) = row_idx; %#ok<AGROW> 
+                    batches{b}(end+1) = row_idx;
                     batch_weights_list(b) = batch_weights_list(b) + w; 
                     placed = true;
                     break;
                 end
             end             
-            % 注释已修复
             if ~placed
-                batches{end+1} = row_idx; %#ok<AGROW>
-                batch_weights_list(end+1) = w; %#ok<AGROW>
+                batches{end+1} = row_idx;
+                batch_weights_list(end+1) = w;
             end
         end
         
-        % 生成最终的任务ID序列
         real_task_ids = [];
         for b = 1:length(batches)
             [~, loc] = ismember(batches{b}, my_tasks);
             [~, order] = sort(loc);
             batches{b} = batches{b}(order);
-            real_task_ids = [real_task_ids, tasks(batches{b}, 1)']; %#ok<AGROW> 
+            real_task_ids = [real_task_ids, tasks(batches{b}, 1)'];
         end
         
-        % 注释已修复
         schedules{k} = real_task_ids;
         real_task_batches = cell(1, length(batches));
         for b = 1:length(batches)
-            real_task_batches{b} = tasks(batches{b}, 1)'; % 转换为实际订单 ID
+            real_task_batches{b} = tasks(batches{b}, 1)';
         end
         
         batch_info{k} = struct(... 
             'num_batches', length(batches), ...
-            'task_batches', {real_task_batches}, ...    % 每批任务ID
-            'batch_weights', batch_weights_list ...     % 每批次的总重量
+            'task_batches', {real_task_batches}, ...
+            'batch_weights', batch_weights_list ...
         );
 
-        % 注释已修复
         curr_pos = depots(real_agv_id, :);             
         dist_sum = 0; time_spent = 0;
         agv_omega_i = 0; 
         
-        % 注释已修复
         for b = 1:length(batches)
             batch = batches{b};
             pick_dist = 0; drop_dist = 0;
             current_payload = 0; 
             
-            % 取货阶段
             for j = 1:length(batch)
                 target_id = tasks(batch(j), 2);          
                 [pick_rc, ~] = get_coords_simple(target_id, curr_pos); 
@@ -296,7 +240,6 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
                 agv_omega_i = agv_omega_i + current_payload;
             end
             
-            % 送货阶段
             for j = 1:length(batch)
                 target_id = tasks(batch(j), 2);
                 [~, drop_rc] = get_coords_simple(target_id, curr_pos); 
@@ -312,45 +255,40 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
             time_spent = time_spent + (pick_dist + drop_dist) / curr_agv.speed; 
         end
         
-        % 更新AGV的行驶距离、最大时间和负载积分
         agv_dists(k) = dist_sum;                           
         agv_times(k) = time_spent;                          
         total_omega_sum = total_omega_sum + agv_omega_i;
     end
     
-    % 注释已修复
     f1 = sum(agv_dists);
     f2 = max(agv_times);
     f3 = -total_omega_sum;
 
-    objectives = [f1, f2, f3];     % 返回目标向量
+    objectives = [f1, f2, f3];
 end
 
 function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
     pop_size = size(pop_objs, 1);
     fronts = cell(pop_size, 1);
-    domination_count = zeros(pop_size, 1); % 记录被多少个体支配 (n_p)
-    dominated_set = cell(pop_size, 1);     % 记录支配集合 (S_p)
+    domination_count = zeros(pop_size, 1);
+    dominated_set = cell(pop_size, 1);
     rank = zeros(pop_size, 1);
 
     for i = 1:pop_size
         for j = 1:pop_size
             if i == j, continue; end
-            % 注释已修复
             if all(pop_objs(i,:) <= pop_objs(j,:)) && any(pop_objs(i,:) < pop_objs(j,:))
                 dominated_set{i} = [dominated_set{i}, j];
             elseif all(pop_objs(j,:) <= pop_objs(i,:)) && any(pop_objs(j,:) < pop_objs(i,:))
                 domination_count(i) = domination_count(i) + 1;
             end
         end
-        % 如果不被任何人支配，则属于第一前沿 (Rank 1)
         if domination_count(i) == 0
             rank(i) = 1;
             fronts{1} = [fronts{1}, i];
         end
     end
 
-    % 注释已修复
     current_front = 1;
     while ~isempty(fronts{current_front})
         next_front = [];
@@ -366,7 +304,7 @@ function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
         current_front = current_front + 1;
         fronts{current_front} = next_front;
     end
-    fronts(cellfun(@isempty, fronts)) = []; % 清除空前沿
+    fronts(cellfun(@isempty, fronts)) = [];
 end
 
 function cd = calc_crowding_distance(pop_objs, fronts)
@@ -378,27 +316,23 @@ function cd = calc_crowding_distance(pop_objs, fronts)
         front = fronts{f};
         l = length(front);
         
-        % 注释已修复
         if l <= 2
             cd(front) = inf;
             continue;
         end
         
-        % 对每一个目标维度独立计算距离并累加
         for m = 1:num_objs
             [sorted_objs, idx] = sort(pop_objs(front, m));
             sorted_front = front(idx);
             
-            % 注释已修复
             cd(sorted_front(1)) = inf;
             cd(sorted_front(end)) = inf;
             
             f_min = sorted_objs(1);
             f_max = sorted_objs(end);
             
-            if f_max - f_min == 0, continue; end % 防止除以 0
+            if f_max - f_min == 0, continue; end
             
-            % 内部个体根据相邻个体的目标差值计算拥挤度
             for i = 2:l-1
                 cd(sorted_front(i)) = cd(sorted_front(i)) + (sorted_objs(i+1) - sorted_objs(i-1)) / (f_max - f_min);
             end
@@ -411,13 +345,11 @@ function idx = tournament_select_nsga2(rank, cd)
     i1 = randi(pop_size);
     i2 = randi(pop_size);
     
-    % 注释已修复
     if rank(i1) < rank(i2)
         idx = i1;
     elseif rank(i1) > rank(i2)
         idx = i2;
     else
-        % 注释已修复
         if cd(i1) > cd(i2)
             idx = i1;
         else
@@ -430,88 +362,63 @@ function child = mutate_hybrid_de_cpo(chrom, num_tasks, num_agvs, pop, F, g, G, 
     child = chrom;
     PN = length(pop_ranks);
     
-    % 注释已修复
     indices = randperm(size(pop, 1), 3);
     r1 = pop(indices(1), :);
     r2 = pop(indices(2), :);
     r3 = pop(indices(3), :);
 
-    % =========================================================
-    % 注释已修复
-    % =========================================================
     tau1 = rand(); tau2 = rand();
     tau1_prime = tau1 - 0.3 * (1 - g/G); 
     
-    % 注释已修复
-    % 注释已修复
     relative_rank = sum(pop_ranks < curr_rank) / PN; 
 
     if tau1_prime < tau2
-        % --- 探索阶段 ---
         if relative_rank > 0.6
-            % 视觉防御：基因块翻转（彻底打破局部结构）
             range = sort(randperm(num_tasks, 2));
             child(1:num_tasks) = chrom(1:num_tasks);
             child(range(1):range(2)) = fliplr(child(range(1):range(2)));
         else
-            % 注释已修复
             pos = randperm(num_tasks, 2);
             child(pos(1)) = chrom(pos(2));
             child(pos(2)) = chrom(pos(1));
         end
     else
-        % 注释已修复
         if relative_rank < 0.2
-            % 注释已修复
             pos = sort(randperm(num_tasks, 4));
             child(pos(1)) = chrom(pos(2)); child(pos(2)) = chrom(pos(1));
             child(pos(3)) = chrom(pos(4)); child(pos(4)) = chrom(pos(3));
         else
-            % 注释已修复
             idx = randi(num_tasks - 1);
             child(idx) = chrom(idx+1); child(idx+1) = chrom(idx);
         end
     end
 
-    % =========================================================
-    % 策略 2：AGV 分配部分 (num_tasks+1:end) -> 使用 DE 算子
-    % =========================================================
     agv_idx = (num_tasks + 1) : (2 * num_tasks);
     
-    % DE 变异算子：x_new = r1 + F * (r2 - r3)
-    % 注释已修复
     mutated_agv_part = r1(agv_idx) + F * (r2(agv_idx) - r3(agv_idx));
     
-    % 取整并限制边界，防止索引失效
     mutated_agv_part = round(mutated_agv_part);
     mutated_agv_part = max(1, min(num_agvs, mutated_agv_part));
     
-    % 二进制交叉（DE 风格）：决定哪些位置接受 DE 变异
-    cr_mask = rand(1, num_tasks) < 0.5; % 交叉概率 0.5
+    cr_mask = rand(1, num_tasks) < 0.5;
     child(num_tasks + find(cr_mask)) = mutated_agv_part(cr_mask);
 end
 
 function [child1, child2] = crossover_de(p1, p2, num_tasks)
-    % 注释已修复
-    % 注释已修复
     num_sub = randi([round(num_tasks/3), round(num_tasks/2)]);
     subset = randperm(num_tasks, num_sub);
     
     child1 = zeros(1, 2*num_tasks);
     child2 = zeros(1, 2*num_tasks);
     
-    % 注释已修复
     child1(subset) = p1(subset);
-    % 注释已修复
     remaining_vals2 = setdiff(p2(1:num_tasks), child1(subset), 'stable');
     child1(child1(1:num_tasks) == 0) = remaining_vals2;
     
-    % 子代 2 同理
     child2(subset) = p2(subset);
     remaining_vals1 = setdiff(p1(1:num_tasks), child2(subset), 'stable');
     child2(child2(1:num_tasks) == 0) = remaining_vals1;
     
-    % 注释已修复
     mask = rand(1, num_tasks) < 0.5;
     p1_agv = p1(num_tasks+1:end);
     p2_agv = p2(num_tasks+1:end);
@@ -524,26 +431,16 @@ function [child1, child2] = crossover_de(p1, p2, num_tasks)
 end
 
 
-%% 叉车式AGV相关函数
 function [best_sched, best_cost, cost_hist] = run_sub_hga(tasks, num_sub_agvs, ga_params, eval_func)
-    % 注释已修复
-    % tasks: 任务矩阵
-    % num_sub_agvs: 子系统AGV数量
-    % 注释已修复
-    % eval_func: 成本计算函数句柄
     
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
     
-    % 算子参数
     pc1 = 0.8; pc2 = 0.5;
     pm = 0.3; 
     T = 2000; alpha_T = 0.995;
 
-    % 注释已修复
-    % 注释已修复
-    % 注释已修复
     population = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
         population(i, 1:num_tasks) = randperm(num_tasks);
@@ -554,7 +451,6 @@ function [best_sched, best_cost, cost_hist] = run_sub_hga(tasks, num_sub_agvs, g
     best_sched = cell(1, num_sub_agvs);
     cost_hist = zeros(1, max_gen);
 
-    % 2. 进化循环
     for gen = 1:max_gen
         costs = zeros(pop_size, 1);
         for i = 1:pop_size
@@ -567,11 +463,8 @@ function [best_sched, best_cost, cost_hist] = run_sub_hga(tasks, num_sub_agvs, g
         end
         cost_hist(gen) = best_cost;
 
-        % 注释已修复
-        % 注释已修复
         mutate_handle = @(chrom, pm, curr_c) mutate_fork_time_guided(chrom, tasks, num_sub_agvs, pm, gen, max_gen, costs, curr_c);
 
-        % 调用演化操作
         population = evolve_population_sub(population, costs, num_sub_agvs, num_tasks, ...
                                           pc1, pc2, pm, T, eval_func, mutate_handle);
         T = T * alpha_T;
@@ -584,20 +477,17 @@ function new_pop = evolve_population_sub(pop, costs, ~, num_tasks, pc1, pc2, pm,
     cost_min = min(costs);
     cost_avg = mean(costs);
 
-    % 精英保留
     [~, idx] = sort(costs);
     new_pop(1,:) = pop(idx(1), :);
     new_pop(2,:) = pop(idx(2), :);
 
     i = 3;
     while i <= pop_size
-        % 选择
         p1_idx = tournament_select(costs);
         p2_idx = tournament_select(costs);
         p1 = pop(p1_idx, :);
         p2 = pop(p2_idx, :);
 
-        % 计算自适应概率
         c_parent = min(costs(p1_idx), costs(p2_idx));
         if c_parent <= cost_avg
             ratio = (cost_avg - c_parent) / (cost_avg - cost_min + 1e-6);
@@ -606,26 +496,20 @@ function new_pop = evolve_population_sub(pop, costs, ~, num_tasks, pc1, pc2, pm,
             pc = pc1; 
         end
 
-        % 交叉 (此处需确保 crossover_IPOX_MPX 函数在路径中)
         child1 = p1; 
         child2 = p2;
         if rand < pc
             [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks);
         end
-        % 2. 变异 (适配 CPO 自适应机制)
-        % 获取交叉后子代的基本成本，用于变异策略的初步排名判断
         [~, c1_cost_pre] = eval_func(child1);
         [~, c2_cost_pre] = eval_func(child2);
-        % 变异 (调用封装好的 mutate_fork_time_guided)
         if rand < pm
-            % 传入个体成本 c1_cost_pre 以执行对应的防御策略
             child1 = mutate_func(child1, pm, c1_cost_pre); 
         end
         if rand < pm
             child2 = mutate_func(child2, pm, c2_cost_pre);
         end
 
-        % Metropolis 准则 (接受子代)
         new_pop(i, :) = metropolis_accept(p1, child1, costs(p1_idx), T, eval_func);
         if i + 1 <= pop_size
             new_pop(i+1, :) = metropolis_accept(p2, child2, costs(p2_idx), T, eval_func);
@@ -635,7 +519,6 @@ function new_pop = evolve_population_sub(pop, costs, ~, num_tasks, pc1, pc2, pm,
 end
 
 function [schedules, total_cost] = cost_func_fork(chromosome, tasks, agv_ids, depots, agv_params, weights)
-    % 注释已修复
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks);
@@ -659,13 +542,11 @@ function [schedules, total_cost] = cost_func_fork(chromosome, tasks, agv_ids, de
 
         curr_pos = depots(real_agv_id, :);
         time_spent = 0;
-        % 注释已修复
         for t = 1:length(my_tasks)
             row_idx = my_tasks(t);
             target_id = tasks(row_idx, 2);
-            deadline = tasks(row_idx, 4);                   % 任务截止时间
+            deadline = tasks(row_idx, 4);
             
-            % 注释已修复
             [pick_rc, drop_rc] = get_coords_simple(target_id, curr_pos);
             
             d1 = sum(abs(curr_pos - pick_rc));
@@ -673,24 +554,19 @@ function [schedules, total_cost] = cost_func_fork(chromosome, tasks, agv_ids, de
             dist_leg = d1 + d2;
             total_dist = total_dist + dist_leg;
             
-            % 累加时间并计算超时惩罚
             time_spent = time_spent + dist_leg / curr_agv.speed;
             if time_spent > deadline
-                % 【目标函数设计】：超时即重罚，迫使算法优化顺序
                 total_penalty = total_penalty + (time_spent - deadline) * weights.w_penalty * 5;
             end
             
-            % 注释已修复
             curr_pos = drop_rc;                               
         end
     end
 
-    % 注释已修复
     total_cost = total_dist * weights.w_dist + total_penalty;
 end
 
 function idx = tournament_select(costs)
-    % 注释已修复
     i1 = randi(length(costs));
     i2 = randi(length(costs));
     if costs(i1) < costs(i2)
@@ -704,64 +580,50 @@ function child = mutate_fork_time_guided(chrom, tasks, num_agvs, pm, g, G, pop_c
 
     num_tasks = size(tasks, 1);
     child = chrom;
-    PN = length(pop_costs); % 当前种群数量
+    PN = length(pop_costs);
     
-    % 注释已修复
-    % Step 1: 生成随机数并根据迭代次数更新
     tau1 = rand(); 
     tau2 = rand();
-    tau1_prime = tau1 - 0.3 * (1 - g/G); % 公式 (4.27)
+    tau1_prime = tau1 - 0.3 * (1 - g/G);
     
-    % 注释已修复
     sorted_costs = sort(pop_costs);
     rank_idx = find(sorted_costs == current_cost, 1, 'first');
     
-    % 注释已修复
     if isempty(rank_idx)
         [~, rank_idx] = min(abs(sorted_costs - current_cost));
     end
     
     if tau1_prime < tau2
-        % --- 执行探索策略 ---
         if rank_idx > 0.6 * PN
-            % 注释已修复
             range = sort(randperm(num_tasks, 2));
             child(range(1):range(2)) = fliplr(child(range(1):range(2)));
         else
-            % 注释已修复
             pos = randperm(num_tasks, 2);
             t = child(pos(1)); child(pos(1)) = child(pos(2)); child(pos(2)) = t;
         end
     else
-        % 注释已修复
         if rank_idx > 0.2 * PN && rank_idx <= 0.4 * PN
-            % 注释已修复
             idx = randi(num_tasks - 1);
             t = child(idx); child(idx) = child(idx+1); child(idx+1) = t;
         else
-            % 注释已修复
             pos = sort(randperm(num_tasks, 4));
             t1 = child(pos(1)); child(pos(1)) = child(pos(2)); child(pos(2)) = t1;
             t2 = child(pos(3)); child(pos(3)) = child(pos(4)); child(pos(4)) = t2;
         end
     end
 
-    % 注释已修复
     if rand < (pm + 0.1)
         agv_idx = (num_tasks + 1) : (2 * num_tasks);
         current_agvs = child(agv_idx);
         
-        % 统计频率
         counts = zeros(1, num_agvs);
         for k = 1:num_agvs
             counts(k) = sum(current_agvs == k);
         end
         
-        % 注释已修复
         min_val = min(counts);
         candidates = find(counts == min_val);
         
-        % 随机覆盖两个位置
         mutate_pos = randperm(num_tasks, 2);
         for p = 1:2
             child(num_tasks + mutate_pos(p)) = candidates(randi(length(candidates)));
@@ -770,7 +632,6 @@ function child = mutate_fork_time_guided(chrom, tasks, num_agvs, pm, g, G, pop_c
 end
 
 function selected = metropolis_accept(parent, child, p_cost, T, eval_func)
-% M准则
     [~, c_cost] = eval_func(child);
     delta = c_cost - p_cost;
     if delta <= 0 || rand < exp(-delta / T)
@@ -780,19 +641,15 @@ function selected = metropolis_accept(parent, child, p_cost, T, eval_func)
     end
 end
 
-%% 注释已修复
 function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
-    % 混合交叉：IPOX (顺序部分) 用于任务顺序，MPX (多点交叉) 用于AGV分配
     child1 = zeros(1, num_tasks * 2);
     child2 = zeros(1, num_tasks * 2);
 
-    % ---- IPOX 交叉 (任务顺序部分) ----
     seq1 = p1(1:num_tasks);
     seq2 = p2(1:num_tasks);
 
-    mask = randi([0, 1], 1, num_tasks);          % 随机生成 0/1 掩码
+    mask = randi([0, 1], 1, num_tasks);
     set1 = seq1(mask == 1);
-    % 注释已修复
     c1_seq = zeros(1, num_tasks);
     c1_seq(mask == 1) = set1;
     c1_seq(mask == 0) = seq2(~ismember(seq2, set1));
@@ -802,74 +659,54 @@ function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
     c2_seq(mask == 1) = set2;
     c2_seq(mask == 0) = seq1(~ismember(seq1, set2));
 
-    % ---- MPX 交叉（AGV 分配部分）----
     agv1 = p1(num_tasks+1:end);
     agv2 = p2(num_tasks+1:end);
-    mpx_mask = randi([0, 1], 1, num_tasks);       % 随机掩码
+    mpx_mask = randi([0, 1], 1, num_tasks);
     c1_agv = agv1;
     c2_agv = agv2;
     c1_agv(mpx_mask == 1) = agv2(mpx_mask == 1);
     c2_agv(mpx_mask == 1) = agv1(mpx_mask == 1);
 
-    % 注释已修复
     child1 = [c1_seq, c1_agv];
     child2 = [c2_seq, c2_agv];
 end
 
 function [pick, drop] = get_coords_simple(target_id, current_pos)
-    % 杈撳叆: 
-    % 注释已修复
-    %   current_pos - AGV 当前坐标 [x, y]
-    % 杈撳嚭:
-    % 注释已修复
-    % 注释已修复
 
     if target_id <= 12
-        % --- 小件区动态寻优逻辑 (ID 1-12, 2x2 区域) ---
         if target_id <= 6
             offset = target_id - 1;
-            % 左下仓库基准 (X起始:3, 间隔:4, Y:18)
             pick_base = [3 + offset * 4, 18];
-            % 注释已修复
             drop_base = [17 + offset * 5, 43];
         else
             offset = target_id - 7;
-            % 左下仓库基准 (X起始:3, 间隔:4, Y:10)
             pick_base = [3 + offset * 4, 10];
-            % 注释已修复
             drop_base = [17 + offset * 5, 33];
         end
         
-        % 注释已修复
         pick = find_nearest_grid_custom(pick_base, current_pos, 2);
         drop = find_nearest_grid_custom(drop_base, pick, 2);
         
     else
-        % --- 大件区动态寻优逻辑 (ID 13-16, 3x3 区域) ---
-        % 同步更新为分散式地图布局坐标
-        w_bases = [4, 42; 18, 4; 40, 23; 47, 11]; % 仓库取货基准
-        s_bases = [40, 11; 4, 36; 5, 23; 47, 23]; % 工位送货基准
+        w_bases = [4, 42; 18, 4; 40, 23; 47, 11];
+        s_bases = [40, 11; 4, 36; 5, 23; 47, 23];
         
         idx = target_id - 12;
         pick_base = w_bases(idx, :); 
         drop_base = s_bases(idx, :); 
         
-        % 注释已修复
         pick = find_nearest_grid_custom(pick_base, current_pos, 3);
-        % 注释已修复
         drop = find_nearest_grid_custom(drop_base, pick, 3);
     end
 end
 
 function best_pt = find_nearest_grid_custom(base_xy, reference_pos, size_n)
-    % 注释已修复
     min_dist = inf;
     best_pt = base_xy;
     
     for dx = 0:size_n-1
         for dy = 0:size_n-1
             test_pt = [base_xy(1) + dx, base_xy(2) + dy];
-            % 注释已修复
             dist = sum(abs(test_pt - reference_pos));
             
             if dist < min_dist

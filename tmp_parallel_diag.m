@@ -1,4 +1,4 @@
-﻿try
+try
     fprintf('MATLAB version: %s\n', version);
     fprintf('License test: %d\n', license('test','Distrib_Computing_Toolbox'));
     v = ver('parallel');
