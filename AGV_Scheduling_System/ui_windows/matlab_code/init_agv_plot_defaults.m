@@ -1,4 +1,4 @@
-﻿function init_agv_plot_defaults(style)
+function init_agv_plot_defaults(style)
 %INIT_AGV_PLOT_DEFAULTS Apply unified root defaults for plotting.
 
     if nargin < 1 || isempty(style)

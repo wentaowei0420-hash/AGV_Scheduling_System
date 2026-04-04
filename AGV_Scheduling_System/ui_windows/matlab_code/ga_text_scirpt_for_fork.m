@@ -164,11 +164,11 @@ function plot_convergence_compare(fig_name, fig_title, x_label, y_label, exp_dat
     hold on;
     plot(base_data, 'LineWidth', style.line_width, 'Color', style.base_color, ...
         'LineStyle', '--', 'DisplayName', '对照组（标准 NSGA-II 算法）');
+    set(gca, 'FontName', style.en_font, 'FontSize', style.axis_font, 'GridAlpha', style.grid_alpha, 'LineWidth', 1);
+    grid on;
     title(fig_title, 'FontSize', style.title_font, 'FontWeight', 'bold', 'FontName', style.cn_font, 'Interpreter', 'none');
     xlabel(x_label, 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
     ylabel(y_label, 'FontSize', style.label_font, 'FontName', style.cn_font, 'Interpreter', 'none');
-    set(gca, 'FontName', style.en_font, 'FontSize', style.axis_font, 'GridAlpha', style.grid_alpha, 'LineWidth', 1);
-    grid on;
     legend('Location', 'northeast', 'FontSize', style.axis_font, 'FontName', style.cn_font, 'Interpreter', 'none');
     axis tight;
     apply_agv_plot_theme(gcf, style);

@@ -771,6 +771,8 @@ function opts = get_ga_debug_options()
     opts.force_serial_evaluation = false;
     opts.max_parallel_workers = 4;
     opts.min_parallel_population = 20;
+    opts.report_cache_stats = true;
+    opts.cache_stats_print_every = 20;
 end
 
 function opts = get_ga_diversity_options()
@@ -905,32 +907,117 @@ function warn_if_front_invalid_once(tag, front_objs)
 end
 
 function pop_objs = evaluate_population_parallel(population, eval_func)
+    persistent eval_obj_cache eval_cache_stats;
     num_individuals = size(population, 1);
     pop_objs = zeros(num_individuals, 3);
+    if num_individuals == 0
+        return;
+    end
+
+    if isempty(eval_obj_cache)
+        eval_obj_cache = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    elseif eval_obj_cache.Count > 50000
+        eval_obj_cache = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    end
+    if isempty(eval_cache_stats)
+        eval_cache_stats = struct('calls', 0, 'total_individuals', 0, 'total_unique', 0, ...
+            'total_cache_hits', 0, 'total_new_evals', 0);
+    end
+
+    [unique_population, ~, population_map] = unique(population, 'rows', 'stable');
+    num_unique = size(unique_population, 1);
+    unique_objs = zeros(num_unique, 3);
+    cache_prefix = sprintf('%s|L=%d|', func2str(eval_func), size(population, 2));
+    missing_mask = true(num_unique, 1);
+    missing_keys = cell(num_unique, 1);
+
+    for idx = 1:num_unique
+        cache_key = [cache_prefix, sprintf('%.12g,', unique_population(idx, :))];
+        missing_keys{idx} = cache_key;
+        if isKey(eval_obj_cache, cache_key)
+            unique_objs(idx, :) = eval_obj_cache(cache_key);
+            missing_mask(idx) = false;
+        end
+    end
+
+    missing_idx = find(missing_mask);
+    cache_hits = num_unique - numel(missing_idx);
+    duplicate_count = num_individuals - num_unique;
+    if isempty(missing_idx)
+        eval_cache_stats.calls = eval_cache_stats.calls + 1;
+        eval_cache_stats.total_individuals = eval_cache_stats.total_individuals + num_individuals;
+        eval_cache_stats.total_unique = eval_cache_stats.total_unique + num_unique;
+        eval_cache_stats.total_cache_hits = eval_cache_stats.total_cache_hits + cache_hits;
+        maybe_report_eval_cache_stats('实验组', eval_cache_stats, num_individuals, num_unique, duplicate_count, cache_hits, 0, get_ga_debug_options());
+        pop_objs = unique_objs(population_map, :);
+        return;
+    end
 
     debug_opts = get_ga_debug_options();
     if ~debug_opts.force_serial_evaluation && ...
-       num_individuals >= debug_opts.min_parallel_population && ...
+       numel(missing_idx) >= debug_opts.min_parallel_population && ...
        use_parallel_evaluation_local()
         try
-            parfor idx = 1:num_individuals
-                [~, obj] = eval_func(population(idx, :));
-                pop_objs(idx, :) = obj;
+            missing_objs = zeros(numel(missing_idx), 3);
+            parfor j = 1:numel(missing_idx)
+                idx = missing_idx(j);
+                [~, obj] = eval_func(unique_population(idx, :));
+                missing_objs(j, :) = obj;
+            end
+            for j = 1:numel(missing_idx)
+                idx = missing_idx(j);
+                unique_objs(idx, :) = missing_objs(j, :);
+                eval_obj_cache(missing_keys{idx}) = missing_objs(j, :);
             end
         catch ME
             warning('GA:ParallelEvalFallback', ...
                 '实验组并行评估失败，已自动回退串行 for: %s', ME.message);
-            for idx = 1:num_individuals
-                [~, obj] = eval_func(population(idx, :));
-                pop_objs(idx, :) = obj;
+            for j = 1:numel(missing_idx)
+                idx = missing_idx(j);
+                [~, obj] = eval_func(unique_population(idx, :));
+                unique_objs(idx, :) = obj;
+                eval_obj_cache(missing_keys{idx}) = obj;
             end
         end
     else
-        for idx = 1:num_individuals
-            [~, obj] = eval_func(population(idx, :));
-            pop_objs(idx, :) = obj;
+        for j = 1:numel(missing_idx)
+            idx = missing_idx(j);
+            [~, obj] = eval_func(unique_population(idx, :));
+            unique_objs(idx, :) = obj;
+            eval_obj_cache(missing_keys{idx}) = obj;
         end
     end
+
+    eval_cache_stats.calls = eval_cache_stats.calls + 1;
+    eval_cache_stats.total_individuals = eval_cache_stats.total_individuals + num_individuals;
+    eval_cache_stats.total_unique = eval_cache_stats.total_unique + num_unique;
+    eval_cache_stats.total_cache_hits = eval_cache_stats.total_cache_hits + cache_hits;
+    eval_cache_stats.total_new_evals = eval_cache_stats.total_new_evals + numel(missing_idx);
+    maybe_report_eval_cache_stats('实验组', eval_cache_stats, num_individuals, num_unique, duplicate_count, cache_hits, numel(missing_idx), debug_opts);
+
+    pop_objs = unique_objs(population_map, :);
+end
+
+function maybe_report_eval_cache_stats(tag, stats, num_individuals, num_unique, duplicate_count, cache_hits, new_evals, debug_opts)
+    if ~isfield(debug_opts, 'report_cache_stats') || ~debug_opts.report_cache_stats
+        return;
+    end
+
+    print_every = 20;
+    if isfield(debug_opts, 'cache_stats_print_every') && ~isempty(debug_opts.cache_stats_print_every)
+        print_every = max(1, round(debug_opts.cache_stats_print_every));
+    end
+
+    should_print = stats.calls <= 3 || mod(stats.calls, print_every) == 0 || cache_hits > 0;
+    if ~should_print
+        return;
+    end
+
+    duplicate_ratio = duplicate_count / max(num_individuals, 1);
+    cumulative_hit_ratio = stats.total_cache_hits / max(stats.total_unique, 1);
+    fprintf('[缓存统计][%s] 第%d次评估: 总个体=%d | 唯一=%d | 重复=%d(%.1f%%%%) | 缓存命中=%d | 新评估=%d | 累计命中率=%.1f%%%%\n', ...
+        tag, stats.calls, num_individuals, num_unique, duplicate_count, duplicate_ratio * 100, ...
+        cache_hits, new_evals, cumulative_hit_ratio * 100);
 end
 
 function report_parallel_evaluation_status()
