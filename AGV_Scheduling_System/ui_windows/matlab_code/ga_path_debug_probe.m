@@ -1,4 +1,4 @@
-function ga_path_debug_probe(task_list, depots, agv_types, agv_params, label)
+﻿function ga_path_debug_probe(task_list, depots, agv_types, agv_params, label)
 %GA_PATH_DEBUG_PROBE Preflight path reachability probe for GA debugging.
 
     if nargin < 5 || isempty(label)
@@ -104,7 +104,7 @@ function info = probe_segment(curr_pos, target_id, phase, agv_type, payload_weig
         end
 
         info.free_candidates = info.free_candidates + 1;
-        [path, g_cost, ~, ~, path_length] = astar_planner_turn3(eval_map, curr_pos, candidate, payload_weight, cost_map);
+        [path, g_cost, ~, ~, path_length] = astar_planner_turn3(eval_map, curr_pos, candidate, payload_weight, cost_map, agv_type);
         if isempty(path) || ~isfinite(g_cost)
             continue;
         end
@@ -155,3 +155,4 @@ function [cost_map, map_rows, map_cols] = get_probe_costmap(agv_type)
     end
     [map_rows, map_cols] = size(cost_map);
 end
+

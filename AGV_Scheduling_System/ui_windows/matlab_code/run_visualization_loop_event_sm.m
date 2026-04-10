@@ -534,7 +534,7 @@
                     end
                 end
             end
-            [candidate_path, candidate_cost] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, current_costmap);
+            [candidate_path, candidate_cost] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, current_costmap, AGVs(id).type);
             if ~isempty(candidate_path) && candidate_cost < best_cost
                 best_cost = candidate_cost;
                 best_target = candidate_target;
@@ -966,3 +966,5 @@
         end
     end
 end
+
+

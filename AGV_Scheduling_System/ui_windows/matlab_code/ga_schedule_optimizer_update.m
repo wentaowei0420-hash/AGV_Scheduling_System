@@ -1,4 +1,4 @@
-﻿function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
+function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
 
     debug_opts = get_ga_debug_options();
     oracle_options = struct();
@@ -1166,7 +1166,7 @@ function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr
 
         eval_map = planning_map;
         eval_map(curr_pos(1), curr_pos(2)) = 0;
-        [path, g_cost, ~, ~, path_length] = astar_planner_turn3(eval_map, curr_pos, candidate, payload_weight, cost_map);
+        [path, g_cost, ~, ~, path_length] = astar_planner_turn3(eval_map, curr_pos, candidate, payload_weight, cost_map, agv_type);
         if isempty(path) || ~isfinite(g_cost)
             continue;
         end
@@ -1370,6 +1370,7 @@ function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
     child1 = [c1_seq, c1_agv];
     child2 = [c2_seq, c2_agv];
 end
+
 
 
 

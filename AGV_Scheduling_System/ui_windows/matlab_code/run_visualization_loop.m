@@ -1,36 +1,35 @@
-﻿%% === 妯″潡 3: 瀹炴椂瑙勫垝涓庝豢鐪熷惊鐜?(浠ｇ爜娣卞害閲嶆瀯鐗?- 澶氳浇閲嶅垪闃熺増) ===
 function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
     style = agv_plot_theme();
     init_agv_plot_defaults(style);
-    % 瀹炴椂浠跨湡涓诲惊鐜嚱鏁帮紝璐熻矗鍙鍖栨墍鏈堿GV鐨勮繍鍔ㄣ€佷换鍔℃墽琛屻€佸厖鐢点€佸啿绐佹秷瑙ｇ瓑銆?
+    % 实时仿真主循环函数，负责可视化所有AGV的运动、任务执行、充电、冲突消解等。
     
     global mapW mapH binaryMap; 
     
-    % --- 1. 鍒濆鍖栧浘褰㈢晫闈?---
+    % --- 1. 初始化图形界面 ---
     generate_beautiful_factory_map();   
     f_map = gcf;                        
     ax = findobj(f_map, 'Type', 'Axes'); 
     hold(ax, 'on');                      
-    set(f_map, 'Name', '瀹炴椂鍔ㄦ€佽皟搴︿豢鐪?, 'NumberTitle', 'off', 'MenuBar', 'none', 'ToolBar', 'none', 'Position', [50, 200, 1000, 700]);
+    set(f_map, 'Name', '实时动态调度仿真', 'NumberTitle', 'off', 'MenuBar', 'none', 'ToolBar', 'none', 'Position', [50, 200, 1000, 700]);
     
     [f_batt, b_handle, t_handles] = init_battery_monitor(num_agvs);
     
-    % --- 2. 鍒濆鍖?AGV 瀵硅薄 ---
+    % --- 2. 初始化 AGV 对象 ---
     [AGVs, props, ~] = init_AGVs(num_agvs, depots, agv_schedules, agv_params, agv_types, ax);
     
-    % --- 3. 瀹炴椂浠跨湡涓诲惊鐜?---
-    disp('>> [绯荤粺] 瀹炴椂浠跨湡鍚姩...'); 
+    % --- 3. 实时仿真主循环 ---
+    disp('>> [系统] 实时仿真启动...'); 
     
     % ========================================================
-    % 銆愭柊澧?1銆戯細鍒濆鍖栧杞借嵎闃熷垪涓庣姸鎬佽蹇?
+    % 【新增1】：初始化多载荷队列与状态记忆
     for k = 1:num_agvs
-        AGVs(k).total_turns = 0;           % 杩愯杞集鎬绘暟
-        AGVs(k).last_dir = [0, 0];         % 涓婁竴姝ユ柟鍚戠煝閲?
+        AGVs(k).total_turns = 0;           % 运行转弯总数
+        AGVs(k).last_dir = [0, 0];         % 上一步方向矢量
         
-        AGVs(k).pick_queue = [];           % 鍙栬揣浠诲姟闃熷垪
-        AGVs(k).drop_queue = [];           % 鍗歌揣浠诲姟闃熷垪
-        AGVs(k).active_task_id = 0;        % 褰撳墠姝ｅ湪瀵艰埅鐨勫叿浣撳瓙浠诲姟ID
-        AGVs(k).interrupted_status = '';   % 璁板繂鍥犳病鐢靛幓鍏呯數鍓嶈涓柇鐨勭姸鎬?
+        AGVs(k).pick_queue = [];           % 取货任务队列
+        AGVs(k).drop_queue = [];           % 卸货任务队列
+        AGVs(k).active_task_id = 0;        % 当前正在导航的具体子任务ID
+        AGVs(k).interrupted_status = '';   % 记忆因没电去充电前被中断的状态
     end
     % ========================================================
     
@@ -50,10 +49,11 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
     task_dist_record = zeros(max_task_id, 1);  
     for k = 1:num_agvs, AGVs(k).total_dist = 0; end
     task_trajectories = cell(max_task_id, 1);
+    
     while sim_running && t < MAX_STEPS   
         t = t + 1;                       
         all_finished = true;              
-        % --- A. 閫昏緫鏇存柊 ---
+        % --- A. 逻辑更新 ---
         for k = 1:num_agvs                
             if AGVs(k).move_timer > 0      
                 AGVs(k).move_timer = AGVs(k).move_timer - 1; 
@@ -61,16 +61,16 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                 continue;                    
             end
             
-            % 鍔ㄦ€佽缃笓灞炶溅浣?鍏呯數妗╁昂瀵?
+            % 动态设置专属车体/充电桩尺寸
             if AGVs(k).type == 2
-                agv_area_sz = [3, 3]; % 鍙夎溅澶у昂瀵?
+                agv_area_sz = [3, 3]; % 叉车大尺寸
             else
-                agv_area_sz = [2, 2]; % 鎵樹妇灏忓昂瀵?
+                agv_area_sz = [2, 2]; % 托举小尺寸
             end
             
-            % 鏍规嵁褰撳墠鐘舵€佹墽琛岀浉搴旇涓?
+            % 根据当前状态执行相应行为
             switch AGVs(k).status
-                case 'Idle'   % 绌洪棽鐘舵€?
+                case 'Idle'   % 空闲状态
                     if AGVs(k).battery < 20   
                         plan_to_charge(k);     
                         all_finished = false;
@@ -93,14 +93,14 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                                 AGVs(k).interrupted_status = '';
                             end     
                         else
-                            AGVs(k).active_task_id = 0; % 闈炴硶璁板繂鍒欓噸缃?
+                            AGVs(k).active_task_id = 0; % 非法记忆则重置
                         end
                         all_finished = false;
                         
                     elseif ~isempty(AGVs(k).tasks)  
                         % ======================================================
-                        % 銆愭柊澧炴牳蹇冦€戯細鎵归噺缁勮璁㈠崟閫昏緫 (Type 1 澶氫欢锛孴ype 2 鍗曚欢)
-                        max_load_capacity = 80; % 鎵樹妇杞︽渶澶ц浇閲嶄笂闄?(鍙皟)
+                        % 【新增核心】：批量组装订单逻辑 (Type 1 多件，Type 2 单件)
+                        max_load_capacity = 80; % 托举车最大载重（可调）
                         batch_tasks = [];
                         current_batch_weight = 0;
                         
@@ -109,24 +109,24 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                             row_idx = find(task_list(:,1) == tid);
                             w = task_list(row_idx, 3);
                             
-                            % 銆愮墿鐞嗙害鏉熴€戯細鍙夎溅(Type 2) 涓€娆′弗鏍煎彧鎷変竴涓紒
+                            % 【物理约束】：叉车(Type 2) 一次严格只拉一个！
                             if AGVs(k).type == 2 && i > 1
                                 break; 
                             end
                             
-                            % 銆愮墿鐞嗙害鏉熴€戯細鎵樹妇杞?Type 1) 鏍规嵁杞介噸涓€鐩村線閲屽
+                            % 【物理约束】：托举车(Type 1) 根据载重一直往里塞
                             if i == 1 || (current_batch_weight + w <= max_load_capacity)
                                 batch_tasks = [batch_tasks, tid];
                                 current_batch_weight = current_batch_weight + w;
                             else
-                                break; % 瓒呴噸锛屾埅鏂綋鍓嶆壒娆?
+                                break; % 超重，截断当前批次
                             end
                         end
                         
                         AGVs(k).pick_queue = batch_tasks;
                         AGVs(k).drop_queue = batch_tasks;
                         
-                        % 寮瑰嚭绗竴涓换鍔★紝鍓嶅線鍙栬揣鐐?
+                        % 弹出第一个任务，前往取货点
                         first_tid = AGVs(k).pick_queue(1);
                         AGVs(k).pick_queue(1) = [];
                         AGVs(k).active_task_id = first_tid;
@@ -138,7 +138,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                         if plan_path(k, pick_anchor, pick_size)
                             AGVs(k).status = 'Moving_Pick';      
                         else
-                            % 琚牭姝昏鍒掑け璐ワ紝閫€鍥為槻涓㈠け
+                            % 被堵死规划失败，退回防丢失
                             AGVs(k).pick_queue = [];
                             AGVs(k).drop_queue = [];
                             AGVs(k).active_task_id = 0;
@@ -167,9 +167,9 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                     
                 case {'Moving_Pick', 'Moving_Drop', 'Go_Home', 'Going_Charge'}  
                     all_finished = false;
-                    % 銆愭柊澧炶蹇嗗姛鑳姐€戯細娌＄數鍘诲厖鐢垫椂锛岀簿鍑嗚浣忔鍦ㄤ簡鍝釜鐘舵€侊紒
+                    % 【新增记忆功能】：没电去充电时，精准记住死在了哪个状态！
                     if AGVs(k).battery < 20 && ~strcmp(AGVs(k).status, 'Going_Charge') && ~strcmp(AGVs(k).status, 'Charging')
-                        disp(['AGV-', num2str(k), ' 鐢甸噺鑰楀敖锛屼繚鐣欓槦鍒楃幇鍦猴紝鍓嶅線鍏呯數锛?]);
+                        disp(['AGV-', num2str(k), ' 电量耗尽，保留队列现场，前往充电...']);
                         AGVs(k).interrupted_status = AGVs(k).status; 
                         plan_to_charge(k);   
                         continue;              
@@ -190,7 +190,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                     if strcmp(AGVs(k).status, 'Charging')        
                         AGVs(k).battery = min(100, AGVs(k).battery + 2.0); 
                         if AGVs(k).battery >= 100 && AGVs(k).wait_timer <= 0  
-                            % 鍏呮弧鐢靛悗鐩存帴鎵撳洖 'Idle'锛屼笅涓懆鏈熶細璁╁畠鍒╃敤璁板繂鑷姩鎺ョ画浠诲姟锛?
+                            % 充满电后直接打回 'Idle'，下个周期会让它利用记忆自动接续任务
                             AGVs(k).status = 'Idle'; 
                         end
                     end
@@ -202,7 +202,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
         end
         if all_finished, break; end   
         
-        % --- B. 鍔ㄧ敾鏄剧ず ---
+        % --- B. 动画显示 ---
         for f = 1:frames_per_step   
             curr_bat_list = zeros(1, num_agvs);  
             for k = 1:num_agvs
@@ -227,9 +227,10 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             pause(0.01);                                  
         end
     end
+    
     save_dir = fileparts(mfilename('fullpath'));
     try
-        csv_file_path = fullfile(save_dir, 'task_metrics.csv'); % 鎷兼帴缁濆璺緞
+        csv_file_path = fullfile(save_dir, 'task_metrics.csv'); % 拼接绝对路径
         fid = fopen(csv_file_path, 'w', 'n', 'utf-8');
         fprintf(fid, 'task_id,agv_id,time_sec,distance\n');
         for i = 1:size(task_list, 1)
@@ -246,34 +247,34 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             path_struct = struct();
             for i = 1:size(task_list, 1)
                 tid = task_list(i, 1);
-                % 鍙湁褰撲换鍔＄湡姝ｆ墽琛屽苟浜х敓杞ㄨ抗鏃舵墠璁板綍
+                % 只有当任务真正执行并产生轨迹时才记录
                 if ~isempty(task_trajectories{tid})
-                    % 浠?task_ID 涓?Key 瀛樺偍鍧愭爣鐭╅樀
+                    % 以 task_ID 为 Key 存储坐标矩阵
                     fname = sprintf('task_%d', tid);
                     path_struct.(fname) = task_trajectories{tid};
                 end
             end
             
-            % 杞崲涓?JSON 鏍煎紡瀛楃涓插苟鍐欏叆鏂囦欢
+            % 转换为 JSON 格式字符串并写入文件
             json_str = jsonencode(path_struct);
-            json_file_path = fullfile(save_dir, 'task_paths.json'); % 鎷兼帴缁濆璺緞
+            json_file_path = fullfile(save_dir, 'task_paths.json'); % 拼接绝对路径
             fid_json = fopen(json_file_path, 'w');
             if fid_json ~= -1
                 fprintf(fid_json, '%s', json_str);
                 fclose(fid_json);
-                disp('>> 宸茬敓鎴愯建杩硅缁嗘暟鎹細task_paths.json');
+                disp('>> 已生成轨迹详细数据：task_paths.json');
             else
-                disp('>> 閿欒锛氭棤娉曞垱寤?task_paths.json 鏂囦欢锛?);
+                disp('>> 错误：无法创建 task_paths.json 文件！');
             end
         catch ME
-            fprintf('>> 杞ㄨ抗瀵煎嚭寮傚父: %s\n', ME.message);
+            fprintf('>> 轨迹导出异常: %s\n', ME.message);
         end
-        disp('>> 宸茬敓鎴愪换鍔℃寚鏍囨姤鍛婏細task_metrics.csv');
+        disp('>> 已生成任务指标报告：task_metrics.csv');
     catch
-        disp('>> 璀﹀憡锛氱敓鎴?task_metrics.csv 澶辫触锛?);
+        disp('>> 警告：生成 task_metrics.csv 失败！');
     end
     try
-        agv_file_path = fullfile(save_dir, 'agv_metrics.csv'); % 鎷兼帴缁濆璺緞
+        agv_file_path = fullfile(save_dir, 'agv_metrics.csv'); % 拼接绝对路径
         fid_agv = fopen(agv_file_path, 'w', 'n', 'utf-8');
         fprintf(fid_agv, 'agv_id,agv_type,battery,total_distance,total_turns\n');
         for k = 1:num_agvs
@@ -281,40 +282,40 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                 k, AGVs(k).type, AGVs(k).battery, AGVs(k).total_dist, AGVs(k).total_turns);
         end
         fclose(fid_agv);
-        disp('>> 宸茬敓鎴愯澶囩姸鎬佹姤鍛婏細agv_metrics.csv');
+        disp('>> 已生成设备状态报告：agv_metrics.csv');
     catch
-        disp('>> 璀﹀憡锛氱敓鎴?agv_metrics.csv 澶辫触锛?);
+        disp('>> 警告：生成 agv_metrics.csv 失败！');
     end
     % ========================================================
-    disp('>> 浠跨湡缁撴潫銆?);                              
+    disp('>> 仿真结束。');                              
     
     disp('========================================');
-    disp('         AGV 杩愯鎬昏浆寮鏁扮粺璁?      ');
+    disp('         AGV 运行总转弯次数统计         ');
     disp('========================================');
     for k = 1:num_agvs
-        agv_type_str = '鏈煡';
-        if AGVs(k).type == 1, agv_type_str = '鎵樹妇寮?; end
-        if AGVs(k).type == 2, agv_type_str = '鍙夎溅寮?; end
-        fprintf('  AGV-%02d (%s)  |  鍏辫浆寮? %d 娆n', k, agv_type_str, AGVs(k).total_turns);
+        agv_type_str = '未知';
+        if AGVs(k).type == 1, agv_type_str = '托举式'; end
+        if AGVs(k).type == 2, agv_type_str = '叉车式'; end
+        fprintf('  AGV-%02d (%s)  |  共转弯 %d 次\n', k, agv_type_str, AGVs(k).total_turns);
     end
     disp('========================================');
     
     
     % ==============================================================
-    % ============== 宓屽杈呭姪鍑芥暟鍖哄煙 ===============================
+    % ============== 嵌套辅助函数区域 ==============================
     % ==============================================================
     function resolve_conflict(id_self, id_blocker, tasks_info, current_t)
         c_type = identify_conflict(id_self, id_blocker, AGVs); 
-        conflict_name = '鏈煡鍐茬獊';
-        if c_type == 1, conflict_name = '鐩稿悜鍐茬獊'; end
-        if c_type == 2, conflict_name = '鑺傜偣鍐茬獊'; end
-        if c_type == 3, conflict_name = '鍗犱綅鍐茬獊'; end
-        if c_type == 4, conflict_name = '杩借刀鍐茬獊'; end
+        conflict_name = '未知冲突';
+        if c_type == 1, conflict_name = '相向冲突'; end
+        if c_type == 2, conflict_name = '节点冲突'; end
+        if c_type == 3, conflict_name = '占位冲突'; end
+        if c_type == 4, conflict_name = '追赶冲突'; end
         
         P_self = calculate_ahp_priority(AGVs(id_self), tasks_info, current_t);
         P_blocker = calculate_ahp_priority(AGVs(id_blocker), tasks_info, current_t);
         
-        disp(['[鎺у埗鍙癩 妫€娴嬪埌 ', conflict_name, ' (AGV-', num2str(id_self), ' 涓?AGV-', num2str(id_blocker), ')']);
+        disp(['[控制台] 检测到 ', conflict_name, ' (AGV-', num2str(id_self), ' 与 AGV-', num2str(id_blocker), ')']);
         
         blocker_status = AGVs(id_blocker).status;
         is_blocker_stuck = strcmp(blocker_status, 'Idle') || strcmp(blocker_status, 'Loading') || ...
@@ -326,16 +327,16 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             end
         elseif P_self > P_blocker
             if is_blocker_stuck
-                disp(['[AHP璋冨害] 瀵规柟 AGV-', num2str(id_blocker), ' 鐗╃悊鍋滄粸(', blocker_status, ')銆侫GV-', num2str(id_self), ' 缁曡銆?]);
+                disp(['[AHP调度] 对方 AGV-', num2str(id_blocker), ' 物理停滞(', blocker_status, ')。AGV-', num2str(id_self), ' 绕行。']);
                 if ~isempty(AGVs(id_self).target_node) 
                     success = plan_path(id_self, AGVs(id_self).target_node, [1, 1]); 
                     if ~success
-                        disp(['[璀﹀憡] 缁曡姝昏儭鍚岋紒AGV-', num2str(id_self), ' 鍘熷湴浼戠湢...']);
+                        disp(['[警告] 绕行死胡同！AGV-', num2str(id_self), ' 原地休眠...']);
                         AGVs(id_self).move_timer = 5; 
                     end
                 end
             else
-                disp(['[AHP璋冨害] AGV-', num2str(id_self), ' 楦ｇ瑳瑕佹眰瀵规柟璁╄矾...']);
+                disp(['[AHP调度] AGV-', num2str(id_self), ' 鸣笛要求对方让路...']);
             end
         else
             if id_self > id_blocker 
@@ -346,7 +347,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             end
         end
     end
-
+    
     function plan_to_charge(id)
         charge_pos = props(AGVs(id).type).charge; 
         if AGVs(id).type == 2, charge_area_sz = [3, 3]; 
@@ -357,31 +358,31 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             AGVs(id).status = 'Going_Charge';      
         end
     end
-
+    
     function success = plan_path(id, target_anchor, area_size)
         if nargin < 3 || isempty(area_size), area_size = [2, 2]; end
         
         % ==========================================================
-        % 銆愭牳蹇冧慨澶嶃€戯細鍔ㄦ€佹帹瀵艰櫄鎷?Target ID锛屾縺娲诲簳灞傚尯鍩熶簰閿佹満鍒讹紒
+        % 【核心修复】：动态推导虚拟 Target ID，激活底层区域互锁机制！
         virtual_target_id = 0;
         
         if strcmp(AGVs(id).status, 'Going_Charge') || strcmp(AGVs(id).status, 'Charging')
-            % 鍘诲厖鐢垫椂锛屼紶鍏ヤ笓灞炲厖鐢?ID
-            if AGVs(id).type == 1, virtual_target_id = 17; end % 鎵樹妇杞﹀厖鐢?
-            if AGVs(id).type == 2, virtual_target_id = 18; end % 鍙夎溅鍏呯數
+            % 去充电时，传入专属充电 ID
+            if AGVs(id).type == 1, virtual_target_id = 17; end % 托举车充电
+            if AGVs(id).type == 2, virtual_target_id = 18; end % 叉车充电
         else
-            % 姝ｅ父鎵ц浠诲姟鎴栧洖杞﹀簱鏃讹紝鍊熺敤鍚岀被鐨?ID 鏉ヨЕ鍙戜簰閿侀€昏緫
-            if AGVs(id).type == 1, virtual_target_id = 1; end  % 鎵樹妇杞﹀€熺敤 ID 1
-            if AGVs(id).type == 2, virtual_target_id = 13; end % 鍙夎溅鍊熺敤 ID 13
+            % 正常执行任务或回车库时，借用同类的 ID 来触发互锁逻辑
+            if AGVs(id).type == 1, virtual_target_id = 1; end  % 托举车借用 ID 1
+            if AGVs(id).type == 2, virtual_target_id = 13; end % 叉车借用 ID 13
         end
         
-        % 銆愬叧閿姩浣溿€戯細搴熷純闈欐€佸叏灞€鍦板浘锛屾瘡娆″璺兘鐢熸垚甯︽湁閽堝鎬т簰閿佺殑鍔ㄦ€佸湴鍥撅紒
+        % 【关键动作】：废弃静态全局地图，每次寻路都生成带有针对性互锁的动态地图！
         tempMap = create_binary_grid_map(mapW, mapH, virtual_target_id);
         % ==========================================================
         
         area_h = area_size(1); area_w = area_size(2);
         
-        % 1. 鍦ㄤ簰閿佸湴鍥句笂锛屽己琛屾妸鐩爣闈跺尯鈥滄寲绌衡€濓紝淇濊瘉 AGV 鑳藉紑杩涘幓
+        % 1. 在互锁地图上，强行把目标靶区“挖空”，保证 AGV 能开进去
         for dr = 0 : (area_h - 1)
             for dc = 0 : (area_w - 1)
                 r = target_anchor(1) + dr; c = target_anchor(2) + dc;
@@ -428,7 +429,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
         if isfield(AGVs(id), 'payload_weight') && AGVs(id).load == 1
             current_weight = AGVs(id).payload_weight;
         end
-        [path, ~, ~, ~, ~, ~] = astar_planner_turn3(tempMap, curr_pos, actual_target, current_weight);
+        [path, ~, ~, ~, ~, ~] = astar_planner_turn3(tempMap, curr_pos, actual_target, current_weight, [], AGVs(id).type);
         if ~isempty(path)
             AGVs(id).path = path;                
             AGVs(id).path_idx = 2;                
@@ -438,7 +439,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             success = false; 
         end
     end
-
+    
     function status = execute_move(id)
         if isempty(AGVs(id).path) || AGVs(id).path_idx > size(AGVs(id).path, 1)
             status = 1; return; 
@@ -447,22 +448,22 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
         next_node = AGVs(id).path(AGVs(id).path_idx, :); 
         nr = next_node(1); nc = next_node(2);
         
-        % 鍐茬獊妫€鏌ラ€昏緫涓嶅彉
+        % 冲突检查逻辑不变
         if OccupancyGrid(nr, nc) ~= 0 && OccupancyGrid(nr, nc) ~= id
             status = -OccupancyGrid(nr, nc); 
             return; 
         end
         
-        % 杞集缁熻閫昏緫涓嶅彉
+        % 转弯统计逻辑不变
         curr_dir = [nr - AGVs(id).pos(1), nc - AGVs(id).pos(2)]; 
         if ~isequal(AGVs(id).last_dir, [0, 0]) && ~isequal(AGVs(id).last_dir, curr_dir)
             AGVs(id).total_turns = AGVs(id).total_turns + 1; 
         end
         AGVs(id).last_dir = curr_dir; 
         
-        % --- 鍏抽敭淇敼浣嶇疆锛氭洿鏂板潗鏍囧苟璁板綍杞ㄨ抗 ---
+        % --- 关键修改位置：更新坐标并记录轨迹 ---
         OccupancyGrid(AGVs(id).pos(1), AGVs(id).pos(2)) = 0; 
-        AGVs(id).pos = next_node;                       % 鏇存柊浣嶇疆
+        AGVs(id).pos = next_node;                       % 更新位置
         OccupancyGrid(nr, nc) = id; 
         
         tid = AGVs(id).active_task_id;
@@ -473,7 +474,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
         if ~isempty(AGVs(id).tasks)
             for i = 1:length(AGVs(id).tasks)
                 q_tid = AGVs(id).tasks(i);
-                % 婊¤冻鏉′欢锛氫笉鏄富鍔ㄤ换鍔★紝涓?task_times(q_tid, 1) > 0 (琛ㄧず宸插畬鎴?Loading)
+                % 满足条件：不是主动任务，且 task_times(q_tid, 1) > 0 (表示已完成 Loading)
                 if q_tid ~= tid && task_times(q_tid, 1) > 0
                     task_trajectories{q_tid} = [task_trajectories{q_tid}; AGVs(id).pos];
                 end
@@ -482,18 +483,17 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
         AGVs(id).total_dist = AGVs(id).total_dist + 1;
         AGVs(id).path_idx = AGVs(id).path_idx + 1;      
         AGVs(id).move_timer = AGVs(id).step_dur;         
-        % 鍔ㄦ€佽幏鍙栬杞﹀瀷鐨勬渶澶ц浇閲嶏紙涓?GA 淇濇寔缁濆涓€鑷达級
+        
+        % 动态获取该车型的最大载重（与 GA 保持绝对一致）
         if AGVs(id).type == 1
-            cap = 80.0;  % 鎵樹妇杞︽渶澶ц浇閲?
+            cap = 80.0;  % 托举车最大载重
         elseif AGVs(id).type == 2
-            cap = 500.0; % 鍙夎溅鏈€澶ц浇閲?
+            cap = 500.0; % 叉车最大载重
         else
-            cap = 100.0; % 鍏滃簳榛樿鍊?
+            cap = 100.0; % 兜底默认值
         end
         
         cost = (e_b + e_l * (AGVs(id).payload_weight / cap)); 
-        AGVs(id).battery = max(0, AGVs(id).battery - cost);
-        
         AGVs(id).battery = max(0, AGVs(id).battery - cost);
         
         if AGVs(id).path_idx > size(AGVs(id).path, 1)
@@ -503,7 +503,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             status = 0; 
         end
     end
-
+    
     function handle_arrival(id, ~)
         st = AGVs(id).status;
         if strcmp(st, 'Moving_Pick')
@@ -525,19 +525,19 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             row_idx = find(tasks_info(:,1) == tid);  
             task_weight = tasks_info(row_idx, 3);
             
-            % 1. 銆愭牳蹇冿細浠呰褰曡捣鐐广€戣褰曞紑濮嬫椂闂村拰閲岀▼锛屼笉杩涜缁撶畻
+            % 1. 【核心：仅记录起点】记录开始时间和里程，不进行结算
             if task_times(tid, 1) == 0, task_times(tid, 1) = t; end
             task_start_dist(tid) = AGVs(id).total_dist;
             task_executor(tid) = id;
             
-            % 2. 瑁呰浇璐х墿
+            % 2. 装载货物
             AGVs(id).payload_weight = AGVs(id).payload_weight + task_weight; 
             AGVs(id).load = 1;                     
             
-            fprintf('馃摝 [AGV-%02d] 鎴愬姛瑁呰浇璁㈠崟 #%d | 閲嶉噺: %d | 杞︿笂鎬婚噸: %d\n', ...
+            fprintf('📦 [AGV-%02d] 成功装载订单 #%d | 重量: %d | 车上总重: %d\n', ...
                 id, tid, task_weight, AGVs(id).payload_weight);
                 
-            % 3. 闃熷垪娴佽浆閫昏緫
+            % 3. 队列流转逻辑
             if ~isempty(AGVs(id).pick_queue)
                 next_tid = AGVs(id).pick_queue(1);
                 AGVs(id).pick_queue(1) = [];
@@ -552,7 +552,7 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                     AGVs(id).pick_queue = [next_tid, AGVs(id).pick_queue]; 
                 end
             else
-                % 鍙栧畬璐т簡锛屽嚭鍙戝幓閫佽揣
+                % 取完货了，出发去送货
                 first_drop_tid = AGVs(id).drop_queue(1);
                 AGVs(id).drop_queue(1) = []; 
                 AGVs(id).active_task_id = first_drop_tid;
@@ -572,20 +572,20 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
             row_idx = find(tasks_info(:,1) == tid);  
             task_weight = tasks_info(row_idx, 3);
             
-            % 鈽呫€愭牳蹇冿細缁撶畻缁堢偣鎸囨爣銆戝彧鏈夊湪鍗歌揣瀹屾垚鏃舵墠璁板綍缁撴潫鏃堕棿鍜屾€昏矾绋?
+            % ★【核心：结算终点指标】只有在卸货完成时才记录结束时间和总路程
             task_times(tid, 2) = t; 
             time_spent_sec = (task_times(tid, 2) - task_times(tid, 1)) / 6.0;
             task_dist_record(tid) = AGVs(id).total_dist - task_start_dist(tid);
             
-            fprintf('鉁?[AGV-%02d] 浠诲姟瀹屾垚锛佽鍗?#%d | 鑰楁椂: %.1f绉?| 杩愰€侀噷绋? %d鏍糪n', ...
+            fprintf('✅ [AGV-%02d] 任务完成！订单 #%d | 耗时: %.1f秒 | 运送里程: %d格\n', ...
                     id, tid, time_spent_sec, task_dist_record(tid));
             
-            % 鎵ｉ櫎杞介噸骞朵粠璇ヨ溅浠诲姟閾句腑绉婚櫎
+            % 扣除载重并从该车任务链中移除
             AGVs(id).payload_weight = max(0, AGVs(id).payload_weight - task_weight); 
             AGVs(id).tasks(AGVs(id).tasks == tid) = [];                
                 
             if ~isempty(AGVs(id).drop_queue)
-                % 缁х画閫佷笅涓€浠?
+                % 继续送下一件
                 next_drop_tid = AGVs(id).drop_queue(1);
                 AGVs(id).drop_queue(1) = []; 
                 AGVs(id).active_task_id = next_drop_tid;
@@ -599,8 +599,8 @@ function run_visualization_loop(num_agvs, depots, agv_schedules, task_list, agv_
                     AGVs(id).drop_queue = [next_drop_tid, AGVs(id).drop_queue]; 
                 end
             else
-                % 鍏ㄩ儴閫佸畬锛屽洖褰掔┖闂?
-                fprintf('   -> 馃帀 AGV-%02d 鎵规閰嶉€佸叏閮ㄦ敹瀹樸€俓n', id);
+                % 全部送完，回归空闲
+                fprintf('   -> 🎉 AGV-%02d 批次配送全部收官。\n', id);
                 AGVs(id).status = 'Idle';                   
                 AGVs(id).load = 0;                           
                 AGVs(id).active_task_id = 0;

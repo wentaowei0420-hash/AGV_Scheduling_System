@@ -1,32 +1,32 @@
-﻿function run_visualization_loop_time_all(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+function run_visualization_loop_time_all(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
     style = agv_plot_theme();
     init_agv_plot_defaults(style);
     
     global mapW mapH; 
     
-    % --- 1. 鍒濆鍖栧浘褰㈢晫闈?---
+    % --- 1. 初始化图形界面 ---
     generate_beautiful_factory_map();   
     f_map = gcf;                        
     ax = findobj(f_map, 'Type', 'Axes'); 
     hold(ax, 'on');                      
-    set(f_map, 'Name', '瀹炴椂鍔ㄦ€佽皟搴︿豢鐪?, 'NumberTitle', 'off', 'MenuBar', 'none', 'ToolBar', 'none', 'Position', [50, 200, 1000, 700]);
+    set(f_map, 'Name', '实时动态调度仿真', 'NumberTitle', 'off', 'MenuBar', 'none', 'ToolBar', 'none', 'Position', [50, 200, 1000, 700]);
     
     [f_batt, b_handle, t_handles] = init_battery_monitor(num_agvs);
     
-    % --- 2. 鍒濆鍖?AGV 瀵硅薄 ---
+    % --- 2. 初始化 AGV 对象 ---
     [AGVs, props, ~] = init_AGVs(num_agvs, depots, agv_schedules, agv_params, agv_types, ax);
     
-    % --- 3. 瀹炴椂浠跨湡涓诲惊鐜?---
-    disp('>> [绯荤粺] 瀹炴椂浠跨湡鍚姩...'); 
+    % --- 3. 实时仿真主循环 ---
+    disp('>> [系统] 实时仿真启动...'); 
 
     for k = 1:num_agvs
-        AGVs(k).total_turns = 0;           % 杩愯杞集鎬绘暟
-        AGVs(k).last_dir = [0, 0];         % 涓婁竴姝ユ柟鍚戠煝閲?
+        AGVs(k).total_turns = 0;           % 运行转弯总数
+        AGVs(k).last_dir = [0, 0];         % 上一步方向矢量
         
-        AGVs(k).pick_queue = [];           % 鍙栬揣浠诲姟闃熷垪
-        AGVs(k).drop_queue = [];           % 鍗歌揣浠诲姟闃熷垪
-        AGVs(k).active_task_id = 0;        % 褰撳墠姝ｅ湪瀵艰埅鐨勫叿浣撳瓙浠诲姟ID
-        AGVs(k).interrupted_status = '';   % 璁板繂鍥犳病鐢靛幓鍏呯數鍓嶈涓柇鐨勭姸鎬?
+        AGVs(k).pick_queue = [];           % 取货任务队列
+        AGVs(k).drop_queue = [];           % 卸货任务队列
+        AGVs(k).active_task_id = 0;        % 当前正在导航的具体子任务ID
+        AGVs(k).interrupted_status = '';   % 记忆因没电去充电前被中断的状态
     end 
     sim_running = true;      
     MAX_STEPS = 500000;      
@@ -51,7 +51,7 @@
         t = t + 1;                       
         all_finished = true;   
         run_sliding_window_radar(t, task_list);
-        % --- A. 閫昏緫鏇存柊 ---
+        % --- A. 逻辑更新 ---
         for k = 1:num_agvs   
             if AGVs(k).move_timer > 0      
                 AGVs(k).move_timer = AGVs(k).move_timer - 1; 
@@ -59,16 +59,16 @@
                 continue;                    
             end
             
-            % 鍔ㄦ€佽缃笓灞炶溅浣?鍏呯數妗╁昂瀵?
+            % 动态设置专属车位/充电桩尺寸
             if AGVs(k).type == 2
-                agv_area_sz = [3, 3]; % 鍙夎溅澶у昂瀵?
+                agv_area_sz = [3, 3]; % 叉车大尺寸
             else
-                agv_area_sz = [2, 2]; % 鎵樹妇灏忓昂瀵?
+                agv_area_sz = [2, 2]; % 托举小尺寸
             end
             
-            % 鏍规嵁褰撳墠鐘舵€佹墽琛岀浉搴旇涓?
+            % 根据当前状态执行相应行为
             switch AGVs(k).status
-                case 'Idle'   % 绌洪棽鐘舵€?
+                case 'Idle'   % 空闲状态
                     if AGVs(k).battery < 20   
                         plan_to_charge(k,t);     
                         all_finished = false;
@@ -96,7 +96,7 @@
                                 AGVs(k).interrupted_status = '';
                             end     
                         else
-                            AGVs(k).active_task_id = 0; % 闈炴硶璁板繂鍒欓噸缃?
+                            AGVs(k).active_task_id = 0; % 非法记忆则重置
                         end
                         all_finished = false;
                         
@@ -174,7 +174,7 @@
                 case {'Moving_Pick', 'Moving_Drop', 'Go_Home', 'Going_Charge', 'Yielding'}  
                     all_finished = false;
                     if AGVs(k).battery < 20 && ~strcmp(AGVs(k).status, 'Going_Charge') && ~strcmp(AGVs(k).status, 'Charging')
-                        disp(['AGV-', num2str(k), ' 鐢甸噺鑰楀敖锛屼繚鐣欓槦鍒楃幇鍦猴紝鍓嶅線鍏呯數锛?]);
+                        disp(['AGV-', num2str(k), ' 电量耗尽，保留队列现场，前往充电']);
                         AGVs(k).interrupted_status = AGVs(k).status; 
                         plan_to_charge(k,t);   
                         continue;              
@@ -206,7 +206,7 @@
         end
         if all_finished, break; end   
         
-        % --- B. 鍔ㄧ敾鏄剧ず ---
+        % --- B. 动画显示 ---
         for f = 1:frames_per_step   
             curr_bat_list = zeros(1, num_agvs);  
             for k = 1:num_agvs
@@ -232,23 +232,23 @@
         end
     end
     export_simulation_results(num_agvs, AGVs, task_list, task_times, task_dist_record, task_executor, task_trajectories);
-    disp('>> 浠跨湡缁撴潫銆?);                              
+    disp('>> 仿真结束。');                              
     
     disp('========================================');
-    disp('         AGV 杩愯鎬昏浆寮鏁扮粺璁?      ');
+    disp('         AGV 运行总转弯次数统计      ');
     disp('========================================');
     for k = 1:num_agvs
-        agv_type_str = '鏈煡';
-        if AGVs(k).type == 1, agv_type_str = '鎵樹妇寮?; end
-        if AGVs(k).type == 2, agv_type_str = '鍙夎溅寮?; end
-        fprintf('  AGV-%02d (%s)  |  鍏辫浆寮? %d 娆n', k, agv_type_str, AGVs(k).total_turns);
+        agv_type_str = '未知';
+        if AGVs(k).type == 1, agv_type_str = '托举式'; end
+        if AGVs(k).type == 2, agv_type_str = '叉车式'; end
+        fprintf('  AGV-%02d (%s)  |  共转弯 %d 次\n', k, agv_type_str, AGVs(k).total_turns);
     end
     disp('========================================');
     
     function resolve_conflict(id_self, id_blocker, tasks_info, current_t)            
         pos_self = AGVs(id_self).pos;          
         target_self = AGVs(id_self).path(AGVs(id_self).path_idx, 1:2); 
-        dir_self = target_self - pos_self;     % 鎻愬彇鏂瑰悜鐭㈤噺 d1
+        dir_self = target_self - pos_self;     % 提取方向矢量 d1
         pos_blocker = AGVs(id_blocker).pos;            
         moving_states = {'Moving_Pick', 'Moving_Drop', 'Going_Charge', 'Go_Home'};
         is_blocker_in_moving_state = ismember(AGVs(id_blocker).status, moving_states);
@@ -270,33 +270,33 @@
             v_blocker = 0;                     
         end
         dot_product = dir_self(1)*dir_blocker(1) + dir_self(2)*dir_blocker(2);
-        c_type = 0; conflict_name = '鏈煡鍐茬獊';
+        c_type = 0; conflict_name = '未知冲突';
         
-        % 瀹氫箟鐘舵€佹爣蹇椾綅
+        % 定义状态标志位
         is_swapping = isequal(target_self, pos_blocker) && isequal(true_target_blocker, pos_self);
         is_same_target = isequal(target_self, target_blocker); 
         
         if is_swapping
-            c_type = 1; conflict_name = '鐩稿悜鍐茬獊(浜ゆ崲)';        
+            c_type = 1; conflict_name = '相向冲突(交换)';        
             
         elseif isequal(target_self, pos_blocker)
             if v_blocker == 0
-                c_type = 3; conflict_name = '鍗犱綅鍐茬獊'; 
+                c_type = 3; conflict_name = '占位冲突'; 
             elseif dot_product > 0
-                c_type = 4; conflict_name = '杩借刀鍐茬獊';
+                c_type = 4; conflict_name = '追尾冲突';
             else
-                c_type = 3; conflict_name = '鍗犱綅鍐茬獊(鍔ㄦ€佽鍑?';
+                c_type = 3; conflict_name = '占位冲突(动态让出)';
             end
             
         elseif is_same_target
             if dot_product < 0
-                c_type = 1; conflict_name = '鐩稿悜鍐茬獊(鐩搁亣)';
+                c_type = 1; conflict_name = '相向冲突(相遇)';
             else
-                c_type = 2; conflict_name = '鑺傜偣鍐茬獊';
+                c_type = 2; conflict_name = '节点冲突';
             end
         end
         
-                conflict_pair = sort([id_self, id_blocker]);
+        conflict_pair = sort([id_self, id_blocker]);
         conflict_key = sprintf('%d_%d_%d', current_t, conflict_pair(1), conflict_pair(2));
         should_handle_conflict = ~isKey(reported_conflict_keys, conflict_key);
         if ~should_handle_conflict
@@ -307,7 +307,7 @@
 
         % Report and resolve each conflict only once for the same AGV pair at the same step.
         if ~send_conflict_webhook(current_t, id_self, pos_self, id_blocker, pos_blocker, conflict_name)
-            disp(sprintf('[Webhook] Conflict event send failed and was written to local log: T=%d, AGV-%d vs AGV-%d', current_t, id_self, id_blocker));
+            fprintf('[Webhook] Conflict event send failed and was written to local log: T=%d, AGV-%d vs AGV-%d\n', current_t, id_self, id_blocker);
         end
 
         P_self = calculate_ahp_priority(AGVs(id_self), tasks_info, current_t);
@@ -489,7 +489,7 @@
                 end
             end
 
-            [candidate_path, candidate_cost, ~, ~, ~, ~] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight);
+            [candidate_path, candidate_cost, ~, ~, ~, ~] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, [], AGVs(id).type);
             if ~isempty(candidate_path) && candidate_cost < best_cost
                 best_cost = candidate_cost;
                 best_target = candidate_target;
@@ -756,19 +756,19 @@
             end
             task_weight = tasks_info(row_idx, 3);
             
-            % 1. 銆愭牳蹇冿細浠呰褰曡捣鐐广€戣褰曞紑濮嬫椂闂村拰閲岀▼锛屼笉杩涜缁撶畻
+            % 1. 【核心：仅记录起点】记录开始时间和里程，不进行结算
             if task_times(tid, 1) == 0, task_times(tid, 1) = t; end
             task_start_dist(tid) = AGVs(id).total_dist;
             task_executor(tid) = id;
             
-            % 2. 瑁呰浇璐х墿
+            % 2. 装载货物
             AGVs(id).payload_weight = AGVs(id).payload_weight + task_weight; 
             AGVs(id).load = 1;                     
             
-            fprintf('[AGV-%02d] 鎴愬姛瑁呰浇璁㈠崟 #%d | 閲嶉噺: %d | 杞︿笂鎬婚噸: %d\n', ...
+            fprintf('[AGV-%02d] 成功装载订单 #%d | 重量: %d | 车上总重: %d\n', ...
                 id, tid, task_weight, AGVs(id).payload_weight);
                 
-            % 3. 闃熷垪娴佽浆閫昏緫
+            % 3. 队列流转逻辑
             if ~isempty(AGVs(id).pick_queue)
                 next_tid = AGVs(id).pick_queue(1);
                 AGVs(id).pick_queue(1) = [];
@@ -790,7 +790,7 @@
                     AGVs(id).pick_queue = [next_tid, AGVs(id).pick_queue]; 
                 end
             else
-                % 鍙栧畬璐т簡锛屽嚭鍙戝幓閫佽揣
+                % 取完货了，出发去送货
                 first_drop_tid = AGVs(id).drop_queue(1);
                 AGVs(id).drop_queue(1) = []; 
                 AGVs(id).active_task_id = first_drop_tid;
@@ -821,20 +821,20 @@
             end
             task_weight = tasks_info(row_idx, 3);
             
-            % 鈽呫€愭牳蹇冿細缁撶畻缁堢偣鎸囨爣銆戝彧鏈夊湪鍗歌揣瀹屾垚鏃舵墠璁板綍缁撴潫鏃堕棿鍜屾€昏矾绋?
+            % ★【核心：结算终点指标】只有在卸货完成时才记录结束时间和总路程
             task_times(tid, 2) = t; 
             time_spent_sec = (task_times(tid, 2) - task_times(tid, 1)) / 6.0;
             task_dist_record(tid) = AGVs(id).total_dist - task_start_dist(tid);
             
-            fprintf('鉁?[AGV-%02d] 浠诲姟瀹屾垚锛佽鍗?#%d | 鑰楁椂: %.1f绉?| 杩愰€侀噷绋? %d鏍糪n', ...
+            fprintf('✅ [AGV-%02d] 任务完成！订单 #%d | 耗时: %.1f秒 | 运输里程: %d格\n', ...
                     id, tid, time_spent_sec, task_dist_record(tid));
             
-            % 鎵ｉ櫎杞介噸骞朵粠璇ヨ溅浠诲姟閾句腑绉婚櫎
+            % 扣除载重并从该车任务链中移除
             AGVs(id).payload_weight = max(0, AGVs(id).payload_weight - task_weight); 
             AGVs(id).tasks(AGVs(id).tasks == tid) = [];                
                 
             if ~isempty(AGVs(id).drop_queue)
-                % 缁х画閫佷笅涓€浠?
+                % 继续送下一件
                 next_drop_tid = AGVs(id).drop_queue(1);
                 AGVs(id).drop_queue(1) = []; 
                 AGVs(id).active_task_id = next_drop_tid;
@@ -854,8 +854,8 @@
                     AGVs(id).drop_queue = [next_drop_tid, AGVs(id).drop_queue]; 
                 end
             else
-                % 鍏ㄩ儴閫佸畬锛屽洖褰掔┖闂?
-                fprintf('   -> AGV-%02d 鎵规閰嶉€佸叏閮ㄦ敹瀹樸€俓n', id);
+                % 全部送完，回归空闲
+                fprintf('   -> AGV-%02d 批次配送全部收工。\n', id);
                 AGVs(id).status = 'Idle';                   
                 AGVs(id).load = 0;                           
                 AGVs(id).active_task_id = 0;
@@ -864,17 +864,17 @@
     end  
 
     function export_simulation_results(num_agvs, AGVs, task_list, task_times, task_dist_record, task_executor, task_trajectories)
-        disp('>> [鏁版嵁妯″潡] 姝ｅ湪鐢熸垚浠跨湡鎶ュ憡...');
-        save_dir = fileparts(mfilename('fullpath')); % 鑾峰彇褰撳墠鑴氭湰鎵€鍦ㄧ粷瀵硅矾寰?
+        disp('>> [数据模块] 正在生成仿真报告...');
+        save_dir = fileparts(mfilename('fullpath')); % 获取当前脚本所在绝对路径
         
-        % 1. 瀵煎嚭浠诲姟鎸囨爣 (task_metrics.csv)
+        % 1. 导出任务指标 (task_metrics.csv)
         try
             csv_file_path = fullfile(save_dir, 'task_metrics.csv');
             fid = fopen(csv_file_path, 'w', 'n', 'utf-8');
             fprintf(fid, 'task_id,agv_id,time_sec,distance\n');
             for i = 1:size(task_list, 1)
                 tid = task_list(i, 1);
-                if task_times(tid, 2) > 0 % 鍙褰曞凡瀹屾垚鐨勪换鍔?
+                if task_times(tid, 2) > 0 % 只记录已完成的任务
                     t_sec = (task_times(tid, 2) - task_times(tid, 1)) / 6.0;
                     dist = task_dist_record(tid);
                     agv_str = sprintf('AGV-%02d', task_executor(tid));
@@ -882,12 +882,12 @@
                 end
             end
             fclose(fid);
-            disp('  -> 宸茬敓鎴? task_metrics.csv');
+            disp('  -> 已生成 task_metrics.csv');
         catch ME
-            fprintf('  -> [閿欒] task_metrics.csv 鐢熸垚澶辫触: %s\n', ME.message);
+            fprintf('  -> [错误] task_metrics.csv 生成失败: %s\n', ME.message);
         end
         
-        % 2. 瀵煎嚭杞ㄨ抗鏁版嵁 (task_paths.json)
+        % 2. 导出轨迹数据 (task_paths.json)
         try
             path_struct = struct();
             for i = 1:size(task_list, 1)
@@ -904,15 +904,15 @@
             if fid_json ~= -1
                 fprintf(fid_json, '%s', json_str);
                 fclose(fid_json);
-                disp('  -> 宸茬敓鎴? task_paths.json');
+                disp('  -> 已生成 task_paths.json');
             else
-                disp('  -> [閿欒] 鏃犳硶鍒涘缓 task_paths.json 鏂囦欢锛?);
+                disp('  -> [错误] 无法创建 task_paths.json 文件');
             end
         catch ME
-            fprintf('  -> [閿欒] task_paths.json 鐢熸垚澶辫触: %s\n', ME.message);
+            fprintf('  -> [错误] task_paths.json 生成失败: %s\n', ME.message);
         end
         
-        % 3. 瀵煎嚭璁惧鐘舵€?(agv_metrics.csv)
+        % 3. 导出设备状态 (agv_metrics.csv)
         try
             agv_file_path = fullfile(save_dir, 'agv_metrics.csv');
             fid_agv = fopen(agv_file_path, 'w', 'n', 'utf-8');
@@ -922,40 +922,40 @@
                     k, AGVs(k).type, AGVs(k).battery, AGVs(k).total_dist, AGVs(k).total_turns);
             end
             fclose(fid_agv);
-            disp('  -> 宸茬敓鎴? agv_metrics.csv');
+            disp('  -> 已生成 agv_metrics.csv');
         catch ME
-            fprintf('  -> [閿欒] agv_metrics.csv 鐢熸垚澶辫触: %s\n', ME.message);
+            fprintf('  -> [错误] agv_metrics.csv 生成失败: %s\n', ME.message);
         end
     end
     
     function run_sliding_window_radar(current_t, tasks_info)
-        window_size = 6; % 棰勬祴鏈潵 6 涓豢鐪熸 (鍗?1 绉?
+        window_size = 6; % 预测未来 6 个仿真步 (即 1 秒)
         
-        % 1. 鎻愬彇鎵€鏈夎溅杈嗗湪鏈潵 6 姝ョ殑棰勬祴杞ㄨ抗 (Nx3 鐭╅樀: [r, c, future_t])
+        % 1. 提取所有车辆在未来 6 步的预测轨迹 (Nx3 矩阵: [r, c, future_t])
         predicted_trajs = cell(1, num_agvs);
         for k = 1:num_agvs
             predicted_trajs{k} = get_future_trajectory(k, current_t, window_size);
         end
         
-        % 2. 涓や袱閬嶅巻锛屽鎵炬椂绌轰氦鍙夌偣
+        % 2. 两两遍历，寻找时空交叉点
         for i = 1:num_agvs
             for j = i+1:num_agvs
                 traj_A = predicted_trajs{i};
                 traj_B = predicted_trajs{j};
                 
-                % 閫愬抚鎵弿鏈潵鏃堕棿绐?
+                % 逐帧扫描未来时间窗
                 for dt = 1:window_size
                     future_t = current_t + dt;
                     pos_A = traj_A(dt, 1:2);
                     pos_B = traj_B(dt, 1:2);
                     
                     is_conflict = false;
-                    % 鍒ゅ畾 1: 鑺傜偣鍐茬獊/杩藉熬 (鍚屼竴鏃跺埢绔欏湪鍚屼竴涓牸瀛愪笂)
+                    % 判定 1: 节点冲突/追尾 (同一时刻站在同一个格子上)
                     if isequal(pos_A, pos_B)
                         is_conflict = true;
                     end
                     
-                    % 鍒ゅ畾 2: 鎹綅鍐茬獊 (杈圭紭绌挎ā)
+                    % 判定 2: 换位冲突 (边缘穿插)
                     if dt > 1
                         prev_A = traj_A(dt-1, 1:2);
                         prev_B = traj_B(dt-1, 1:2);
@@ -964,10 +964,10 @@
                         end
                     end
                     
-                    % 濡傛灉鍙戠幇鍐茬獊锛岀珛鍗虫墽琛屾椂绌哄崥寮堜笌杞ㄨ抗鎷兼帴
+                    % 如果发现冲突，立即执行时空博弈与轨迹拼接
                     if is_conflict
                         resolve_future_conflict(i, j, future_t, dt, tasks_info);
-                        % 瑙ｅ喅瀹岃繖涓€瀵瑰悗锛岀珛鍒昏烦鍑哄綋鍓嶆椂闂寸獥鐨勬壂鎻忥紝閬垮厤閲嶅澶勭悊
+                        % 解决完这一对后，立刻跳出当前时间窗的扫描，避免重复处理
                         break; 
                     end
                 end
@@ -987,15 +987,15 @@
         for dt = 1:w_size
             f_t = current_t + dt;
             if ~is_moving || temp_path_idx > size(AGVs(id).path, 1)
-                % 濡傛灉鏄潤姝㈢姸鎬侊紝鏈潵鍧愭爣姘歌繙绛変簬褰撳墠鍧愭爣
+                % 如果是静止状态，未来坐标永远等于当前坐标
                 traj(dt, :) = [temp_pos(1), temp_pos(2), f_t];
             else
                 if temp_timer > 0
-                    % 杩樺湪璺笂璺戯紝灏氭湭璺ㄥ叆涓嬩竴涓牸瀛?
+                    % 还在路上跑，尚未跨入下一个格子
                     temp_timer = temp_timer - 1;
                     traj(dt, :) = [temp_pos(1), temp_pos(2), f_t];
                 else
-                    % 鍒氬ソ璺ㄥ叆涓嬩竴涓牸瀛愶紝鏇存柊涓存椂鍧愭爣
+                    % 刚好跨入下一个格子，更新临时坐标
                     next_node = AGVs(id).path(temp_path_idx, 1:2);
                     temp_pos = next_node;
                     traj(dt, :) = [temp_pos(1), temp_pos(2), f_t];
@@ -1009,26 +1009,26 @@
 
     function resolve_future_conflict(id_A, id_B, conflict_t, dt, tasks_info)
         
-        % 鎺ㄧ畻鍑哄綋鍓嶇殑鐪熷疄鏃堕棿
+        % 推算出当前的真实时间
         current_t = conflict_t - dt;
         
-        % 1. 绌胯秺鑷虫湭鏉ワ紝璁＄畻鍙屾柟鍦ㄥ啿绐佹椂鍒荤殑鐪熷疄棰勬湡浼樺厛绾?
+        % 1. 穿越至未来，计算双方在冲突时刻的真实预期优先级
         p_A = calculate_predictive_ahp_priority(AGVs(id_A), tasks_info, current_t, conflict_t, agv_params(id_A));
         p_B = calculate_predictive_ahp_priority(AGVs(id_B), tasks_info, current_t, conflict_t, agv_params(id_B));
         
-        % 瑁佸畾璋佹槸寮辫€?(loser 闇€瑕佹敼鍙樻湭鏉?
+        % 裁定谁是弱者 (loser 需要改变未来)
         if p_A < p_B || (p_A == p_B && id_A > id_B)
             loser = id_A; winner = id_B;
         else
             loser = id_B; winner = id_A;
         end
         
-        % 2. 濡傛灉寮辫€呮湰韬浜庨潤姝㈢姸鎬侊紝鏃犳硶涓诲姩鎷兼帴杞ㄨ抗锛屼氦鐢卞簳灞傚厹搴曟嫤鎴?
+        % 2. 如果弱者本身处于静止状态，无法主动拼接轨迹，交由底层兜底拦截
         if isempty(AGVs(loser).path) || AGVs(loser).path_idx > size(AGVs(loser).path, 1)
             return; 
         end
         
-        % 3. 瀵绘壘鈥滃畨鍏ㄩ敋鐐光€?(Safe Anchor)
+        % 3. 寻找“安全锚点”(Safe Anchor)
         safe_t = conflict_t - 1;
         safe_path_row = find(AGVs(loser).path(:, 3) == safe_t, 1, 'last');
         if isempty(safe_path_row)
@@ -1042,10 +1042,10 @@
         
         original_pos_winner = AGVs(winner).pos;
         
-        % 鎴彇瀹夊叏鍓嶇紑
+        % 截取安全前缀
         safe_prefix_path = original_path_loser(1:safe_path_row, :);
         
-        % 棰勬祴楂樹紭杞﹁締鍦ㄥ啿绐佹椂鍒荤殑鍧愭爣 (杩欏氨鏄鑷寸鎾炵殑缃瓉绁搁)
+        % 预测高优车辆在冲突时刻的坐标 (这就是导致碰撞的罪魁祸首)
         winner_future_traj = get_future_trajectory(winner, conflict_t - 1, 1);
         future_obstacle_pos = winner_future_traj(1, 1:2);
         
@@ -1057,26 +1057,26 @@
         AGVs(loser).pos = original_pos_loser;
         AGVs(winner).pos = original_pos_winner;
         
-        % 6. 鍛借繍瑁佸喅锛氭棤缂濇嫾鎺?(Trajectory Stitching)
+        % 6. 命运裁决：无缝拼接 (Trajectory Stitching)
         if success
-            % A* 鎴愬姛閬垮紑浜嗘湭鏉ョ殑 winner锛屾壘鍒颁簡鏂拌矾
-            new_future_path = AGVs(loser).path(2:end, :); % 鍓旈櫎 A* 璧风偣鏈韩
+            % A* 成功避开了未来的 winner，找到了新路
+            new_future_path = AGVs(loser).path(2:end, :); % 剔除 A* 起点本身
             AGVs(loser).path = [safe_prefix_path; new_future_path];
-            disp(['[棰勮█瀹禲 鎷兼帴鎴愬姛锛丄GV-', num2str(loser), ' 灏嗗湪 T=', num2str(safe_t), ' 鎻愬墠鍙橀亾閬胯 AGV-', num2str(winner)]);
+            disp(['[预言家] 拼接成功，AGV-', num2str(loser), ' 将在 T=', num2str(safe_t), ' 提前变道避让 AGV-', num2str(winner)]);
         else
-            % A* 鍙戠幇鍗曡閬撴鑳″悓缁曚笉寮€锛屾墽琛屻€愯櫄鎷熺瓑寰呫€?
+            % A* 发现单行道死胡同绕不开，执行【虚拟等待】
             wait_nodes = zeros(3, 3);
             for w_step = 1:3
                 wait_nodes(w_step, :) = [safe_anchor(1), safe_anchor(2), safe_t + w_step * AGVs(loser).step_dur];
             end
             
-            % 鎻愬彇鍘熻矾寰勭殑鍓╀綑閮ㄥ垎锛屾暣浣撳悜鍚庢帹杩?3 涓闀?
+            % 提取原路径的剩余部分，整体向后推迟 3 个步长
             remaining_path = original_path_loser(safe_path_row+1:end, :);
             if ~isempty(remaining_path)
                 time_delay = 3 * AGVs(loser).step_dur;
                 remaining_path(:, 3) = remaining_path(:, 3) + time_delay;
                 AGVs(loser).path = [safe_prefix_path; wait_nodes; remaining_path];
-                disp(['[棰勮█瀹禲 缁曡矾澶辫触銆侫GV-', num2str(loser), ' 灏嗗湪瀹夊叏鐐瑰師鍦扮瓑寰呫€?]);
+                disp(['[预言家] 绕路失败，AGV-', num2str(loser), ' 将在安全点原地等待。']);
             end
         end
         

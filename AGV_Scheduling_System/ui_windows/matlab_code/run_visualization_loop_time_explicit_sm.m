@@ -1,4 +1,4 @@
-﻿function run_visualization_loop_time_explicit_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+function run_visualization_loop_time_explicit_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
     style = agv_plot_theme();
     init_agv_plot_defaults(style);
     global mapW mapH;
@@ -34,6 +34,8 @@
     MAX_STEPS = 500000;
     t = 0;
     frames_per_step = 2;
+    reservation_horizon_steps = 8;
+    max_departure_wait_steps = 4;
 
     max_task_id = max(task_list(:, 1));
     task_row_map = zeros(max_task_id, 1);
@@ -176,7 +178,7 @@
             return;
         end
 
-        move_status = execute_move(id);
+        move_status = execute_move(id, current_t);
         if move_status == 1
             handle_arrival(id, current_t);
         elseif move_status < 0
@@ -435,6 +437,7 @@
         best_station = [];
         best_station_target = [];
         best_station_path = [];
+        best_station_wait_steps = 0;
 
         for s = 1:size(candidate_stations, 1)
             station_pos = candidate_stations(s, :);
@@ -450,30 +453,34 @@
                 end
             end
             if ~is_occupied
-                [candidate_path, candidate_target, candidate_cost] = find_best_target_path(id, station_pos, charge_area_sz, 'charge');
+                [candidate_path, candidate_target, candidate_cost, candidate_wait_steps] = find_best_target_path(id, station_pos, charge_area_sz, 'charge', current_t);
                 if ~isempty(candidate_path) && candidate_cost < best_cost
                     best_cost = candidate_cost;
                     best_station = station_pos;
                     best_station_target = candidate_target;
                     best_station_path = candidate_path;
+                    best_station_wait_steps = candidate_wait_steps;
                 end
             end
         end
 
         if ~isempty(best_station)
-            assign_planned_path(id, best_station_path, best_station_target, current_t);
+            assign_planned_path(id, best_station_path, best_station_target, current_t, best_station_wait_steps);
             transition_to(id, 'Going_Charge', 0, []);
         else
             AGVs(id).move_timer = 5;
         end
     end
 
-    function [best_path, best_target, best_cost] = find_best_target_path(id, target_anchor, area_size, planning_mode)
+    function [best_path, best_target, best_cost, best_wait_steps] = find_best_target_path(id, target_anchor, area_size, planning_mode, current_t)
         if nargin < 3 || isempty(area_size)
             area_size = [2, 2];
         end
         if nargin < 4 || isempty(planning_mode)
             planning_mode = 'task';
+        end
+        if nargin < 5 || isempty(current_t)
+            current_t = t;
         end
 
         virtual_target_id = 0;
@@ -534,9 +541,12 @@
         best_path = [];
         best_target = [];
         best_cost = inf;
+        best_wait_steps = 0;
+        best_conflict_count = inf;
         if isempty(valid_targets)
             return;
         end
+        reservations = build_sliding_window_reservations(current_t, id);
 
         current_weight = 0;
         if isfield(AGVs(id), 'payload_weight') && AGVs(id).load == 1
@@ -563,25 +573,48 @@
                     end
                 end
             end
-            [candidate_path, candidate_cost] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, current_costmap);
-            if ~isempty(candidate_path) && candidate_cost < best_cost
+            [candidate_path, candidate_cost] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, current_costmap, AGVs(id).type);
+            if isempty(candidate_path)
+                continue;
+            end
+
+            [is_feasible, conflict_count, wait_steps] = evaluate_candidate_path_window(id, candidate_path, current_t, reservations);
+            if is_feasible
+                if (conflict_count < best_conflict_count) || ...
+                   (conflict_count == best_conflict_count && candidate_cost < best_cost - 1e-9) || ...
+                   (conflict_count == best_conflict_count && abs(candidate_cost - best_cost) <= 1e-9 && wait_steps < best_wait_steps)
+                    best_conflict_count = conflict_count;
+                    best_cost = candidate_cost;
+                    best_target = candidate_target;
+                    best_path = candidate_path;
+                    best_wait_steps = wait_steps;
+                end
+            elseif isempty(best_path) && conflict_count < best_conflict_count
+                best_conflict_count = conflict_count;
                 best_cost = candidate_cost;
                 best_target = candidate_target;
                 best_path = candidate_path;
+                best_wait_steps = wait_steps;
             end
         end
     end
 
-    function assign_planned_path(id, path, actual_target, current_t)
+    function assign_planned_path(id, path, actual_target, current_t, initial_wait_steps)
+        if nargin < 5 || isempty(initial_wait_steps)
+            initial_wait_steps = 0;
+        end
         path_length = size(path, 1);
         time_stamps = zeros(path_length, 1);
         step_time = AGVs(id).step_dur;
         for p_idx = 1:path_length
-            time_stamps(p_idx) = current_t + (p_idx - 1) * step_time;
+            time_stamps(p_idx) = current_t + initial_wait_steps + (p_idx - 1) * step_time;
         end
         AGVs(id).path = [path, time_stamps];
         AGVs(id).path_idx = 2;
         AGVs(id).target_node = actual_target;
+        if initial_wait_steps > 0
+            AGVs(id).move_timer = max(AGVs(id).move_timer, initial_wait_steps);
+        end
     end
 
     function row_idx = get_task_row(task_id)
@@ -599,9 +632,9 @@
         if nargin < 5 || isempty(planning_mode)
             planning_mode = 'task';
         end
-        [path, actual_target] = find_best_target_path(id, target_anchor, area_size, planning_mode);
+        [path, actual_target, ~, wait_steps] = find_best_target_path(id, target_anchor, area_size, planning_mode, current_t);
         if ~isempty(path)
-            assign_planned_path(id, path, actual_target, current_t);
+            assign_planned_path(id, path, actual_target, current_t, wait_steps);
             success = true;
         else
             success = false;
@@ -660,9 +693,15 @@
             end
         end
     end
-    function status = execute_move(id)
+    function status = execute_move(id, current_t)
         if isempty(AGVs(id).path) || AGVs(id).path_idx > size(AGVs(id).path, 1)
             status = 1;
+            return;
+        end
+
+        blocker_id = detect_future_window_conflict(id, current_t);
+        if blocker_id > 0
+            status = -blocker_id;
             return;
         end
 
@@ -742,6 +781,187 @@
             status = 1;
         else
             status = 0;
+        end
+    end
+
+    function reservations = build_sliding_window_reservations(current_t, exclude_id)
+        reservations.node = containers.Map('KeyType', 'char', 'ValueType', 'double');
+        reservations.edge = containers.Map('KeyType', 'char', 'ValueType', 'double');
+        horizon_t = get_window_horizon_time(current_t);
+
+        for other = 1:num_agvs
+            if nargin >= 2 && other == exclude_id
+                continue;
+            end
+
+            curr_pos = AGVs(other).pos;
+            hold_until = min(horizon_t, current_t + max(AGVs(other).move_timer, 0));
+            for tau = current_t:hold_until
+                reserve_node(reservations.node, curr_pos, tau, other);
+            end
+
+            if isempty(AGVs(other).path) || AGVs(other).path_idx > size(AGVs(other).path, 1)
+                continue;
+            end
+
+            prev_pos = curr_pos;
+            prev_t = current_t;
+            for idx = AGVs(other).path_idx:size(AGVs(other).path, 1)
+                node_pos = AGVs(other).path(idx, 1:2);
+                node_t = AGVs(other).path(idx, 3);
+                if node_t > horizon_t
+                    break;
+                end
+                reserve_node(reservations.node, node_pos, node_t, other);
+                reserve_edge(reservations.edge, prev_pos, node_pos, node_t, other);
+                prev_pos = node_pos;
+                prev_t = node_t; %#ok<NASGU>
+            end
+        end
+    end
+
+    function [is_feasible, conflict_count, best_wait_steps] = evaluate_candidate_path_window(id, candidate_path, current_t, reservations)
+        step_time = AGVs(id).step_dur;
+        horizon_t = get_window_horizon_time(current_t);
+        best_wait_steps = 0;
+        best_conflict = inf;
+        is_feasible = false;
+
+        for wait_steps = 0:max_departure_wait_steps
+            conflict_count = 0;
+            timed_path = [candidate_path, zeros(size(candidate_path, 1), 1)];
+            for p_idx = 1:size(candidate_path, 1)
+                timed_path(p_idx, 3) = current_t + wait_steps + (p_idx - 1) * step_time;
+            end
+
+            hold_until = min(horizon_t, current_t + wait_steps);
+            for tau = current_t:hold_until
+                if is_reserved_node(reservations.node, candidate_path(1, :), tau, id)
+                    conflict_count = conflict_count + 1;
+                end
+            end
+
+            for p_idx = 2:size(timed_path, 1)
+                node_pos = timed_path(p_idx, 1:2);
+                node_t = timed_path(p_idx, 3);
+                if node_t > horizon_t
+                    break;
+                end
+                if is_reserved_node(reservations.node, node_pos, node_t, id)
+                    conflict_count = conflict_count + 1;
+                end
+                prev_pos = timed_path(p_idx - 1, 1:2);
+                if is_reserved_edge(reservations.edge, prev_pos, node_pos, node_t, id)
+                    conflict_count = conflict_count + 1;
+                end
+            end
+
+            if conflict_count == 0
+                is_feasible = true;
+                best_wait_steps = wait_steps;
+                return;
+            end
+
+            if conflict_count < best_conflict
+                best_conflict = conflict_count;
+                best_wait_steps = wait_steps;
+            end
+        end
+
+        conflict_count = best_conflict;
+    end
+
+    function blocker_id = detect_future_window_conflict(id, current_t)
+        blocker_id = 0;
+        reservations = build_sliding_window_reservations(current_t, id);
+        horizon_t = get_window_horizon_time(current_t);
+
+        if isempty(AGVs(id).path) || AGVs(id).path_idx > size(AGVs(id).path, 1)
+            return;
+        end
+
+        curr_pos = AGVs(id).pos;
+        hold_until = min(horizon_t, current_t + max(AGVs(id).move_timer, 0));
+        for tau = current_t:hold_until
+            owner = lookup_reserved_node(reservations.node, curr_pos, tau);
+            if owner > 0 && owner ~= id
+                blocker_id = owner;
+                return;
+            end
+        end
+
+        prev_pos = curr_pos;
+        for idx = AGVs(id).path_idx:size(AGVs(id).path, 1)
+            node_pos = AGVs(id).path(idx, 1:2);
+            node_t = AGVs(id).path(idx, 3);
+            if node_t > horizon_t
+                break;
+            end
+            owner = lookup_reserved_node(reservations.node, node_pos, node_t);
+            if owner > 0 && owner ~= id
+                blocker_id = owner;
+                return;
+            end
+            owner = lookup_reserved_edge(reservations.edge, prev_pos, node_pos, node_t);
+            if owner > 0 && owner ~= id
+                blocker_id = owner;
+                return;
+            end
+            prev_pos = node_pos;
+        end
+    end
+
+    function horizon_t = get_window_horizon_time(current_t)
+        max_step = 1;
+        for agv_idx = 1:num_agvs
+            max_step = max(max_step, AGVs(agv_idx).step_dur);
+        end
+        horizon_t = current_t + reservation_horizon_steps * max_step;
+    end
+
+    function reserve_node(node_map, pos, t, owner_id)
+        key = sprintf('%d_%d_%d', round(pos(1)), round(pos(2)), round(t));
+        if ~isKey(node_map, key)
+            node_map(key) = owner_id;
+        end
+    end
+
+    function reserve_edge(edge_map, from_pos, to_pos, t, owner_id)
+        key = sprintf('%d_%d_%d_%d_%d', round(from_pos(1)), round(from_pos(2)), round(to_pos(1)), round(to_pos(2)), round(t));
+        reverse_key = sprintf('%d_%d_%d_%d_%d', round(to_pos(1)), round(to_pos(2)), round(from_pos(1)), round(from_pos(2)), round(t));
+        if ~isKey(edge_map, key)
+            edge_map(key) = owner_id;
+        end
+        if ~isKey(edge_map, reverse_key)
+            edge_map(reverse_key) = owner_id;
+        end
+    end
+
+    function tf = is_reserved_node(node_map, pos, t, owner_id)
+        owner = lookup_reserved_node(node_map, pos, t);
+        tf = owner > 0 && owner ~= owner_id;
+    end
+
+    function tf = is_reserved_edge(edge_map, from_pos, to_pos, t, owner_id)
+        owner = lookup_reserved_edge(edge_map, from_pos, to_pos, t);
+        tf = owner > 0 && owner ~= owner_id;
+    end
+
+    function owner = lookup_reserved_node(node_map, pos, t)
+        key = sprintf('%d_%d_%d', round(pos(1)), round(pos(2)), round(t));
+        if isKey(node_map, key)
+            owner = node_map(key);
+        else
+            owner = 0;
+        end
+    end
+
+    function owner = lookup_reserved_edge(edge_map, from_pos, to_pos, t)
+        key = sprintf('%d_%d_%d_%d_%d', round(from_pos(1)), round(from_pos(2)), round(to_pos(1)), round(to_pos(2)), round(t));
+        if isKey(edge_map, key)
+            owner = edge_map(key);
+        else
+            owner = 0;
         end
     end
 
@@ -982,3 +1202,5 @@
         end
     end
 end
+
+

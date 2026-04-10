@@ -11,7 +11,6 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
         path_oracle = region_distance_oracle('build', oracle_options);
     end
     report_parallel_evaluation_status();
-
     idx_lift_tasks = task_list(:,2) <= 12;
     idx_fork_tasks = task_list(:,2) > 12;
     tasks_lift = task_list(idx_lift_tasks, :);
@@ -38,14 +37,14 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
     dist_fork = 0; time_fork = 0; energy_fork = 0;
     
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
-        disp('   -> [对比组] 启动标准 NSGA-II 引擎 (托举车)...');
+        disp('   -> [对照组] 启动标准 NSGA-II 引擎 (托举车)...');
         eval_lift_moo = @(chrom) cost_func_lift_moo_baseline(chrom, tasks_lift, agvs_lift, depots, agv_params, path_oracle);
         
         [pop_lift, objs_lift, fronts_lift, ~, hist_lift_dist, hist_lift_time, hist_lift_energy, gen_fronts_lift] = run_sub_nsga2_lift_baseline(tasks_lift, length(agvs_lift), ga_params, eval_lift_moo);
         
         front1_idx = fronts_lift{1}; 
         front1_objs = objs_lift(front1_idx, :);
-        warn_if_front_invalid_once('对照组-托举车', front1_objs);
+        warn_if_front_invalid_once('对照组: 托举车', front1_objs);
         
         min_dist_idx_in_front1 = get_front_min_index(front1_objs, 1);
         best_lift_chrom = pop_lift(front1_idx(min_dist_idx_in_front1), :);
@@ -63,14 +62,14 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
     end
     
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
-        disp('   -> [对比组] 启动标准 NSGA-II 引擎 (叉车)...');
+        disp('   -> [对照组] 启动标准 NSGA-II 引擎 (叉车)...');
         eval_fork = @(chrom) cost_func_fork_baseline(chrom, tasks_fork, agvs_fork, depots, agv_params, path_oracle);
         
         [pop_fork, objs_fork, fronts_fork, ~, hist_fork_dist, hist_fork_time, hist_fork_energy, gen_fronts_fork] = run_sub_nsga2_fork_baseline(tasks_fork, length(agvs_fork), ga_params, eval_fork);
         
         front1_idx = fronts_fork{1}; 
         front1_objs = objs_fork(front1_idx, :);
-        warn_if_front_invalid_once('对照组-叉车', front1_objs);
+        warn_if_front_invalid_once('对照组: 叉车', front1_objs);
         
         min_dist_idx_in_front1 = get_front_min_index(front1_objs, 1);
         best_fork_chrom = pop_fork(front1_idx(min_dist_idx_in_front1), :);
@@ -133,7 +132,6 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     end    
     
     pop_objs = evaluate_population_parallel(pop, eval_func);
-
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
@@ -180,7 +178,6 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         end
         
         off_objs = evaluate_population_parallel(offspring, eval_func);
-
         
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
@@ -300,7 +297,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
                 target_id = tasks(batch(j), 2);          
                 [pick_rc, segment_dist, ~, feasible, debug_msg] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 1, current_payload);
                 if ~feasible
-                    report_infeasible_segment_once('对照组-托举车', curr_pos, target_id, 'pickup', current_payload, debug_msg);
+                    report_infeasible_segment_once('对照组: 托举车', curr_pos, target_id, 'pickup', current_payload, debug_msg);
                     objectives = [inf, inf, inf];
                     return;
                 end
@@ -317,7 +314,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chrom
                 target_id = tasks(batch(j), 2);
                 [drop_rc, segment_dist, ~, feasible, debug_msg] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'dropoff', 1, current_payload);
                 if ~feasible
-                    report_infeasible_segment_once('对照组-托举车', curr_pos, target_id, 'dropoff', current_payload, debug_msg);
+                    report_infeasible_segment_once('对照组: 托举车', curr_pos, target_id, 'dropoff', current_payload, debug_msg);
                     objectives = [inf, inf, inf];
                     return;
                 end
@@ -362,7 +359,6 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     end
     
     pop_objs = evaluate_population_parallel(pop, eval_func);
-
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
@@ -413,7 +409,6 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         end
         
         off_objs = evaluate_population_parallel(offspring, eval_func);
-
         
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
@@ -485,14 +480,13 @@ function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, ag
             task_weight = tasks(row_idx, 3);
             [pick_rc, d1, ~, feasible_pick, debug_msg] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 2, 0);
             if ~feasible_pick
-                report_infeasible_segment_once('对照组-叉车', curr_pos, target_id, 'pickup', 0, debug_msg);
+                report_infeasible_segment_once('对照组: 叉车', curr_pos, target_id, 'pickup', 0, debug_msg);
                 objectives = [inf, inf, inf];
                 return;
             end
-
             [drop_rc, d2, ~, feasible_drop, debug_msg] = query_region_oracle_or_astar(path_oracle, pick_rc, target_id, 'dropoff', 2, task_weight);
             if ~feasible_drop
-                report_infeasible_segment_once('对照组-叉车', pick_rc, target_id, 'dropoff', task_weight, debug_msg);
+                report_infeasible_segment_once('对照组: 叉车', pick_rc, target_id, 'dropoff', task_weight, debug_msg);
                 objectives = [inf, inf, inf];
                 return;
             end
@@ -540,6 +534,7 @@ function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
     end
     fronts(cellfun(@isempty, fronts)) = []; 
 end
+
 function cd = calc_crowding_distance(pop_objs, fronts)
     pop_size = size(pop_objs, 1); num_objs = size(pop_objs, 2); cd = zeros(pop_size, 1);
     for f = 1:length(fronts)
@@ -554,12 +549,14 @@ function cd = calc_crowding_distance(pop_objs, fronts)
         end
     end
 end
+
 function idx = tournament_select_nsga2(rank, cd)
     pop_size = length(rank); i1 = randi(pop_size); i2 = randi(pop_size);
     if rank(i1) < rank(i2), idx = i1; elseif rank(i1) > rank(i2), idx = i2; else
         if cd(i1) > cd(i2), idx = i1; else, idx = i2; end
     end
 end
+
 function p = simple_repair(p)
     num = length(p);
     [~, unique_idx] = unique(p, 'first');
@@ -580,7 +577,6 @@ function idx = select_compromise_index(front_objs)
         idx = 1;
         return;
     end
-
     min_objs = min(front_objs, [], 1);
     max_objs = max(front_objs, [], 1);
     obj_norm = (front_objs - min_objs) ./ (max_objs - min_objs + 1e-9);
@@ -617,17 +613,14 @@ function capacity = get_energy_capacity_by_agv_type(curr_agv, agv_type, default_
             default_capacity = 500;
         end
     end
-
     capacity = default_capacity;
     if isempty(curr_agv) || ~isstruct(curr_agv)
         return;
     end
-
     if isfield(curr_agv, 'max_load_capacity') && ~isempty(curr_agv.max_load_capacity) && isfinite(curr_agv.max_load_capacity) && curr_agv.max_load_capacity > 0
         capacity = curr_agv.max_load_capacity;
         return;
     end
-
     if isfield(curr_agv, 'load_capacity') && ~isempty(curr_agv.load_capacity) && isfinite(curr_agv.load_capacity) && curr_agv.load_capacity > 0
         capacity = curr_agv.load_capacity;
     end
@@ -640,7 +633,6 @@ function [best_rc, best_dist, best_cost, feasible, debug_msg] = query_region_ora
     feasible = false;
     debug_msg = '';
     oracle_error_msg = '';
-
     debug_opts = get_ga_debug_options();
     if nargin >= 1 && ~isempty(path_oracle) && ~debug_opts.disable_oracle
         try
@@ -651,14 +643,11 @@ function [best_rc, best_dist, best_cost, feasible, debug_msg] = query_region_ora
             oracle_error_msg = ME.message;
         end
     end
-
     if feasible
         return;
     end
-
     [best_rc, best_dist, best_cost, feasible] = ...
         get_best_astar_segment(curr_pos, target_id, phase, agv_type, payload_weight);
-
     if ~feasible
         if ~isempty(oracle_error_msg)
             debug_msg = sprintf(['oracle查询异常且A*回退失败: oracle_error="%s", ' ...
@@ -674,7 +663,6 @@ function debug_msg = build_astar_failure_debug_msg(curr_pos, target_id, phase, a
     [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type);
     planning_map = create_binary_grid_map(map_cols - 1, map_rows - 1, target_id);
     candidates = get_ga_target_candidates(target_id, phase);
-
     in_bounds = 0;
     free_cells = 0;
     for i = 1:size(candidates, 1)
@@ -686,14 +674,12 @@ function debug_msg = build_astar_failure_debug_msg(curr_pos, target_id, phase, a
             end
         end
     end
-
     if curr_pos(1) < 1 || curr_pos(1) > map_rows || curr_pos(2) < 1 || curr_pos(2) > map_cols
         debug_msg = sprintf(['A*回退失败: 起点越界，起点=[%d %d], 地图尺寸=[%d %d], ' ...
             '目标=%d, 阶段=%s, 车型=%d, 载重=%.3f'], ...
             curr_pos(1), curr_pos(2), map_rows, map_cols, target_id, phase, agv_type, payload_weight);
         return;
     end
-
     debug_msg = sprintf(['A*回退失败: 起点=[%d %d], 目标=%d, 阶段=%s, 车型=%d, 载重=%.3f, ' ...
         '候选点总数=%d, 边界内=%d, 可通行=%d'], ...
         curr_pos(1), curr_pos(2), target_id, phase, agv_type, payload_weight, ...
@@ -715,12 +701,10 @@ function report_infeasible_segment_once(tag, curr_pos, target_id, phase, payload
     if isempty(reported_msgs)
         reported_msgs = containers.Map('KeyType', 'char', 'ValueType', 'logical');
     end
-
     key = sprintf('%s|%d|%d|%d|%s|%.6f', tag, curr_pos(1), curr_pos(2), target_id, phase, payload_weight);
     if isKey(reported_msgs, key)
         return;
     end
-
     reported_msgs(key) = true;
     if isempty(debug_msg)
         debug_msg = sprintf('路径不可行: 起点=[%d %d], 目标=%d, 阶段=%s, 载重=%.3f', ...
@@ -734,7 +718,6 @@ function warn_if_front_invalid_once(tag, front_objs)
     if isempty(warned_tags)
         warned_tags = containers.Map('KeyType', 'char', 'ValueType', 'logical');
     end
-
     if isempty(front_objs)
         if ~isKey(warned_tags, [tag '|empty'])
             warned_tags([tag '|empty']) = true;
@@ -742,7 +725,6 @@ function warn_if_front_invalid_once(tag, front_objs)
         end
         return;
     end
-
     if all(all(~isfinite(front_objs)))
         if ~isKey(warned_tags, [tag '|allinf'])
             warned_tags([tag '|allinf']) = true;
@@ -758,7 +740,6 @@ function pop_objs = evaluate_population_parallel(population, eval_func)
     if num_individuals == 0
         return;
     end
-
     if isempty(eval_obj_cache)
         eval_obj_cache = containers.Map('KeyType', 'char', 'ValueType', 'any');
     elseif eval_obj_cache.Count > 50000
@@ -768,14 +749,12 @@ function pop_objs = evaluate_population_parallel(population, eval_func)
         eval_cache_stats = struct('calls', 0, 'total_individuals', 0, 'total_unique', 0, ...
             'total_cache_hits', 0, 'total_new_evals', 0);
     end
-
     [unique_population, ~, population_map] = unique(population, 'rows', 'stable');
     num_unique = size(unique_population, 1);
     unique_objs = zeros(num_unique, 3);
     cache_prefix = sprintf('%s|L=%d|', func2str(eval_func), size(population, 2));
     missing_mask = true(num_unique, 1);
     missing_keys = cell(num_unique, 1);
-
     for idx = 1:num_unique
         cache_key = [cache_prefix, sprintf('%.12g,', unique_population(idx, :))];
         missing_keys{idx} = cache_key;
@@ -784,7 +763,6 @@ function pop_objs = evaluate_population_parallel(population, eval_func)
             missing_mask(idx) = false;
         end
     end
-
     missing_idx = find(missing_mask);
     cache_hits = num_unique - numel(missing_idx);
     duplicate_count = num_individuals - num_unique;
@@ -797,7 +775,6 @@ function pop_objs = evaluate_population_parallel(population, eval_func)
         pop_objs = unique_objs(population_map, :);
         return;
     end
-
     debug_opts = get_ga_debug_options();
     if ~debug_opts.force_serial_evaluation && ...
        numel(missing_idx) >= debug_opts.min_parallel_population && ...
@@ -832,14 +809,12 @@ function pop_objs = evaluate_population_parallel(population, eval_func)
             eval_obj_cache(missing_keys{idx}) = obj;
         end
     end
-
     eval_cache_stats.calls = eval_cache_stats.calls + 1;
     eval_cache_stats.total_individuals = eval_cache_stats.total_individuals + num_individuals;
     eval_cache_stats.total_unique = eval_cache_stats.total_unique + num_unique;
     eval_cache_stats.total_cache_hits = eval_cache_stats.total_cache_hits + cache_hits;
     eval_cache_stats.total_new_evals = eval_cache_stats.total_new_evals + numel(missing_idx);
     maybe_report_eval_cache_stats('对照组', eval_cache_stats, num_individuals, num_unique, duplicate_count, cache_hits, numel(missing_idx), debug_opts);
-
     pop_objs = unique_objs(population_map, :);
 end
 
@@ -847,35 +822,29 @@ function maybe_report_eval_cache_stats(tag, stats, num_individuals, num_unique, 
     if ~isfield(debug_opts, 'report_cache_stats') || ~debug_opts.report_cache_stats
         return;
     end
-
     print_every = 20;
     if isfield(debug_opts, 'cache_stats_print_every') && ~isempty(debug_opts.cache_stats_print_every)
         print_every = max(1, round(debug_opts.cache_stats_print_every));
     end
-
     should_print = stats.calls <= 3 || mod(stats.calls, print_every) == 0 || cache_hits > 0;
     if ~should_print
         return;
     end
-
     duplicate_ratio = duplicate_count / max(num_individuals, 1);
     cumulative_hit_ratio = stats.total_cache_hits / max(stats.total_unique, 1);
-    fprintf('[缓存统计][%s] 第%d次评估: 总个体=%d | 唯一=%d | 重复=%d(%.1f%%%%) | 缓存命中=%d | 新评估=%d | 累计命中率=%.1f%%%%\n', ...
+    fprintf('[缓存统计][%s] 第%d次评估 | 总个体=%d | 唯一=%d | 重复=%d(%.1f%%%%) | 缓存命中=%d | 新评估=%d | 累计命中率=%.1f%%%%\n', ...
         tag, stats.calls, num_individuals, num_unique, duplicate_count, duplicate_ratio * 100, ...
         cache_hits, new_evals, cumulative_hit_ratio * 100);
 end
 
 function report_parallel_evaluation_status()
     persistent status_reported;
-
     if isempty(status_reported)
         status_reported = false;
     end
-
     if status_reported
         return;
     end
-
     debug_opts = get_ga_debug_options();
     if debug_opts.force_serial_evaluation
         is_parallel = false;
@@ -887,35 +856,29 @@ function report_parallel_evaluation_status()
     else
         [is_parallel, status_msg] = use_parallel_evaluation_local(true);
     end
-
     if is_parallel
         fprintf('[并行评估] 已启用 parfor: %s\n', status_msg);
     else
         fprintf('[并行评估] 当前使用串行 for: %s\n', status_msg);
     end
-
     status_reported = true;
 end
 
 function [tf, status_msg] = use_parallel_evaluation_local(force_refresh)
     persistent parallel_ready parallel_enabled parallel_status_msg;
     debug_opts = get_ga_debug_options();
-
     if nargin < 1
         force_refresh = false;
     end
-
     if debug_opts.force_serial_evaluation
         tf = false;
         status_msg = '调试模式已强制关闭并行评估';
         return;
     end
-
     if isempty(parallel_ready) || force_refresh
         parallel_ready = true;
         parallel_enabled = false;
         parallel_status_msg = '未检测到 Parallel Computing Toolbox';
-
         has_toolbox = license('test', 'Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
         if has_toolbox
             try
@@ -924,7 +887,7 @@ function [tf, status_msg] = use_parallel_evaluation_local(force_refresh)
                 if isempty(pool)
                     try
                         pool = parpool('Processes', desired_workers);
-                        parallel_status_msg = sprintf('已创建进程并行池（%d workers）', pool.NumWorkers);
+                        parallel_status_msg = sprintf('已创建进程并行池 (%d workers)', pool.NumWorkers);
                     catch ME_process
                         try
                             pool = parpool();
@@ -959,7 +922,6 @@ function [tf, status_msg] = use_parallel_evaluation_local(force_refresh)
             parallel_status_msg = '未安装 Parallel Computing Toolbox 或许可证不可用';
         end
     end
-
     tf = parallel_enabled;
     status_msg = parallel_status_msg;
 end
@@ -972,7 +934,6 @@ function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr
     if isempty(planning_map_cache)
         planning_map_cache = containers.Map('KeyType', 'char', 'ValueType', 'any');
     end
-
     payload_key = sprintf('%.6f', payload_weight);
     cache_key = sprintf('%d_%d__%d__%s__%d__%s', curr_pos(1), curr_pos(2), target_id, phase, agv_type, payload_key);
     if isKey(segment_cache, cache_key)
@@ -983,7 +944,6 @@ function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr
         feasible = cached.feasible;
         return;
     end
-
     [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type);
     map_key = sprintf('%d_%d_%d', map_rows, map_cols, target_id);
     if isKey(planning_map_cache, map_key)
@@ -992,13 +952,11 @@ function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr
         planning_map = create_binary_grid_map(map_cols - 1, map_rows - 1, target_id);
         planning_map_cache(map_key) = planning_map;
     end
-
     candidates = get_ga_target_candidates(target_id, phase);
     best_rc = [];
     best_dist = inf;
     best_cost = inf;
     feasible = false;
-
     for i = 1:size(candidates, 1)
         candidate = candidates(i, :);
         if candidate(1) < 1 || candidate(1) > map_rows || candidate(2) < 1 || candidate(2) > map_cols
@@ -1007,14 +965,12 @@ function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr
         if planning_map(candidate(1), candidate(2)) == 1
             continue;
         end
-
         eval_map = planning_map;
         eval_map(curr_pos(1), curr_pos(2)) = 0;
-        [path, g_cost, ~, ~, path_length] = astar_planner_turn3(eval_map, curr_pos, candidate, payload_weight, cost_map);
+        [path, g_cost, ~, ~, path_length] = astar_planner_turn3(eval_map, curr_pos, candidate, payload_weight, cost_map, agv_type);
         if isempty(path) || ~isfinite(g_cost)
             continue;
         end
-
         segment_dist = max(path_length - 1, 0);
         if (g_cost < best_cost - 1e-9) || ...
            (abs(g_cost - best_cost) <= 1e-9 && segment_dist < best_dist) || ...
@@ -1025,7 +981,6 @@ function [best_rc, best_dist, best_cost, feasible] = get_best_astar_segment(curr
             feasible = true;
         end
     end
-
     segment_cache(cache_key) = struct('best_rc', best_rc, 'best_dist', best_dist, 'best_cost', best_cost, 'feasible', feasible);
 end
 
@@ -1038,7 +993,6 @@ function candidates = get_ga_target_candidates(target_id, phase)
         anchor = dropoff_anchor;
         area_size = dropoff_size;
     end
-
     rows = anchor(1):(anchor(1) + area_size(1) - 1);
     cols = anchor(2):(anchor(2) + area_size(2) - 1);
     [grid_cols, grid_rows] = meshgrid(cols, rows);
@@ -1055,20 +1009,10 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
     if isempty(costmap_type1) || isempty(costmap_type2)
         init_global_costmaps();
     end
-
     if agv_type == 1
         cost_map = costmap_type1;
     else
         cost_map = costmap_type2;
     end
-
     [map_rows, map_cols] = size(cost_map);
 end
-
-
-
-
-
-
-
-

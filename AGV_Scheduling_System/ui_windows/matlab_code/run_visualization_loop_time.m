@@ -654,7 +654,7 @@
             end
     
             % 璋冪敤A*璺緞瑙勫垝鍣紙鑰冭檻杞集浠ｄ环鍜岃礋杞戒唬浠凤級
-            [candidate_path, candidate_cost, ~, ~, ~, ~] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, current_costmap);
+            [candidate_path, candidate_cost, ~, ~, ~, ~] = astar_planner_turn3(evalMap, curr_pos, candidate_target, current_weight, current_costmap, AGVs(id).type);
             % 濡傛灉鎵惧埌鍙璺緞涓斾唬浠峰皬浜庡綋鍓嶆渶浼橈紝鍒欐洿鏂版渶浼樿褰?
             if ~isempty(candidate_path) && candidate_cost < best_cost
                 best_cost = candidate_cost;
@@ -1271,3 +1271,5 @@
     end
 
 end
+
+
