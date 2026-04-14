@@ -34,7 +34,7 @@ function run_visualization_loop_time_explicit_sm(num_agvs, depots, agv_schedules
     MAX_STEPS = 500000;
     t = 0;
     frames_per_step = 2;
-    reservation_horizon_steps = 8;
+    reservation_horizon_steps = 6;
     max_departure_wait_steps = 4;
 
     max_task_id = max(task_list(:, 1));
@@ -647,15 +647,6 @@ function run_visualization_loop_time_explicit_sm(num_agvs, depots, agv_schedules
         blocker_pos = AGVs(blocker_id).pos;
         current_gap = abs(curr_pos(1) - blocker_pos(1)) + abs(curr_pos(2) - blocker_pos(2));
         candidate_nodes = [];
-
-        if ~isempty(AGVs(id).path)
-            backtrack_indices = [AGVs(id).path_idx - 2, AGVs(id).path_idx - 3];
-            for idx = backtrack_indices
-                if idx >= 1 && idx <= size(AGVs(id).path, 1)
-                    candidate_nodes = [candidate_nodes; AGVs(id).path(idx, 1:2)]; %#ok<AGROW>
-                end
-            end
-        end
 
         directions = [-1, 0; 1, 0; 0, -1; 0, 1];
         for d = 1:size(directions, 1)

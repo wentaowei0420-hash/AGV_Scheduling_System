@@ -1,0 +1,7 @@
+case_name,expected_type,runtime_detected,runtime_blocker,window_detected,window_blocker,window_type,window_time,classified_type,winner,loser,priority_a,priority_b,step_durs,strategy,strategy_desc
+node_contention,Node contention,0,0,1,2,reserved_node,14,Node contention,2,1,0.698804020668395,0.715560730089315,[1.00 1.00 1.00],wait_then_replan,冲突前一节点停车等待，窗口释放后重规划
+reserved_edge_swap,Head-on swap,0,0,1,2,reserved_edge_swap,13,Head-on swap,2,1,0.702993198023625,0.708229669717662,[1.00 1.00],replan_original_target,edge-swap: loser replans first
+occupied_node,Occupied node,0,0,1,2,reserved_node,12,Occupied node,2,1,0.706135081040047,0.277001890239637,[1.00 1.00],replan_original_target,occupied node: moving AGV replans around static blocker
+head_on_meet,Head-on meet,0,0,1,2,reserved_node,12,Head-on meet,2,1,0.69670943199078,0.711371552734085,[1.00 1.00],replan_original_target,head-on meet: loser replans first
+rear_end_overtake,Rear-end,0,0,1,1,reserved_node,16,Rear-end,1,2,0.712662977705957,0.698000856962653,[2.00 1.00],replan_original_target,rear-end: faster follower overtakes via bypass
+three_agv_interlock,Three-way interlock,0,0,1,1,reserved_node,12,Rear-end,2,1,0.707698945367604,0.701415179334759,[1.00 1.00 1.00],replan_original_target,rear-end: faster follower overtakes via bypass

@@ -1,0 +1,211 @@
+
+[Case 1] node_contention
+  AGV-1: start=211 | via=[231  251  271  291  311  331  351  371] | end=391 | step_dur=1.00
+  AGV-2: start=306 | via=[307  308  309  310  311  312  313  314] | end=315 | step_dur=1.00
+  AGV-3: start=243 | via=[244  245  246  247  248  249  250] | end=251 | step_dur=1.00
+  AGV-4: start=250 | via=[249  248  247  246  245  244  243] | end=242 | step_dur=1.00
+  AGV-5: start=54 | via=[74   94  114  134] | end=154 | step_dur=1.00
+  AGV-6: start=154 | via=[134  114   94   74] | end=54 | step_dur=1.00
+  AGV-7: start=235 | via=[234  233  231] | end=230 | step_dur=1.00
+  AGV-8: start=41 | via=[42  43  44  45] | end=46 | step_dur=1.00
+  AGV-9: start=43 | via=[43  43  43  43] | end=44 | step_dur=1.00
+  AGV-10: start=264 | via=[265  266  267] | end=268 | step_dur=2.00
+  AGV-11: start=241 | via=[261  262  263  264  265  266  267  268  269] | end=270 | step_dur=1.00
+  expected=Node contention | runtime_detected=1 | runtime_blocker=11 | classified=Node contention
+  event_window: detected=1 | blocker=11 | type=none | first_t=19
+  priority_first_decision[t=10]: AGV-1=0.699 | AGV-2=0.716 | AGV-3=0.703 | AGV-4=0.708 | AGV-5=0.697 | AGV-6=0.711 | AGV-7=0.711 | AGV-8=0.706 | AGV-9=0.723 | AGV-10=0.697 | AGV-11=0.711
+  pairwise_first_decision[t=10]: AGV-1(0.699) vs AGV-2(0.716) -> winner=AGV-2 loser=AGV-1 ; AGV-1(0.699) vs AGV-3(0.703) -> winner=AGV-3 loser=AGV-1 ; AGV-1(0.699) vs AGV-4(0.708) -> winner=AGV-4 loser=AGV-1 ; AGV-1(0.699) vs AGV-5(0.697) -> winner=AGV-1 loser=AGV-5 ; AGV-1(0.699) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-1 ; AGV-1(0.699) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-1 ; AGV-1(0.699) vs AGV-8(0.706) -> winner=AGV-8 loser=AGV-1 ; AGV-1(0.699) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-1 ; AGV-1(0.699) vs AGV-10(0.697) -> winner=AGV-1 loser=AGV-10 ; AGV-1(0.699) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-1 ; AGV-2(0.716) vs AGV-3(0.703) -> winner=AGV-2 loser=AGV-3 ; AGV-2(0.716) vs AGV-4(0.708) -> winner=AGV-2 loser=AGV-4 ; AGV-2(0.716) vs AGV-5(0.697) -> winner=AGV-2 loser=AGV-5 ; AGV-2(0.716) vs AGV-6(0.711) -> winner=AGV-2 loser=AGV-6 ; AGV-2(0.716) vs AGV-7(0.711) -> winner=AGV-2 loser=AGV-7 ; AGV-2(0.716) vs AGV-8(0.706) -> winner=AGV-2 loser=AGV-8 ; AGV-2(0.716) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-2 ; AGV-2(0.716) vs AGV-10(0.697) -> winner=AGV-2 loser=AGV-10 ; AGV-2(0.716) vs AGV-11(0.711) -> winner=AGV-2 loser=AGV-11 ; AGV-3(0.703) vs AGV-4(0.708) -> winner=AGV-4 loser=AGV-3 ; AGV-3(0.703) vs AGV-5(0.697) -> winner=AGV-3 loser=AGV-5 ; AGV-3(0.703) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-3 ; AGV-3(0.703) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-3 ; AGV-3(0.703) vs AGV-8(0.706) -> winner=AGV-8 loser=AGV-3 ; AGV-3(0.703) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-3 ; AGV-3(0.703) vs AGV-10(0.697) -> winner=AGV-3 loser=AGV-10 ; AGV-3(0.703) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-3 ; AGV-4(0.708) vs AGV-5(0.697) -> winner=AGV-4 loser=AGV-5 ; AGV-4(0.708) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-4 ; AGV-4(0.708) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-4 ; AGV-4(0.708) vs AGV-8(0.706) -> winner=AGV-4 loser=AGV-8 ; AGV-4(0.708) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-4 ; AGV-4(0.708) vs AGV-10(0.697) -> winner=AGV-4 loser=AGV-10 ; AGV-4(0.708) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-4 ; AGV-5(0.697) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-5 ; AGV-5(0.697) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-5 ; AGV-5(0.697) vs AGV-8(0.706) -> winner=AGV-8 loser=AGV-5 ; AGV-5(0.697) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-5 ; AGV-5(0.697) vs AGV-10(0.697) -> winner=AGV-5 loser=AGV-10 ; AGV-5(0.697) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-5 ; AGV-6(0.711) vs AGV-7(0.711) -> winner=AGV-6 loser=AGV-7 ; AGV-6(0.711) vs AGV-8(0.706) -> winner=AGV-6 loser=AGV-8 ; AGV-6(0.711) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-6 ; AGV-6(0.711) vs AGV-10(0.697) -> winner=AGV-6 loser=AGV-10 ; AGV-6(0.711) vs AGV-11(0.711) -> winner=AGV-6 loser=AGV-11 ; AGV-7(0.711) vs AGV-8(0.706) -> winner=AGV-7 loser=AGV-8 ; AGV-7(0.711) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-7 ; AGV-7(0.711) vs AGV-10(0.697) -> winner=AGV-7 loser=AGV-10 ; AGV-7(0.711) vs AGV-11(0.711) -> winner=AGV-7 loser=AGV-11 ; AGV-8(0.706) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-8 ; AGV-8(0.706) vs AGV-10(0.697) -> winner=AGV-8 loser=AGV-10 ; AGV-8(0.706) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-8 ; AGV-9(0.723) vs AGV-10(0.697) -> winner=AGV-9 loser=AGV-10 ; AGV-9(0.723) vs AGV-11(0.711) -> winner=AGV-9 loser=AGV-11 ; AGV-10(0.697) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-10
+  priority_latest_decision[t=19]: AGV-1=0.701 | AGV-2=0.718 | AGV-3=0.705 | AGV-4=0.711 | AGV-5=0.699 | AGV-6=0.714 | AGV-7=0.714 | AGV-8=0.708 | AGV-9=0.725 | AGV-10=0.699 | AGV-11=0.714
+  pairwise_latest_decision[t=19]: AGV-1(0.701) vs AGV-2(0.718) -> winner=AGV-2 loser=AGV-1 ; AGV-1(0.701) vs AGV-3(0.705) -> winner=AGV-3 loser=AGV-1 ; AGV-1(0.701) vs AGV-4(0.711) -> winner=AGV-4 loser=AGV-1 ; AGV-1(0.701) vs AGV-5(0.699) -> winner=AGV-1 loser=AGV-5 ; AGV-1(0.701) vs AGV-6(0.714) -> winner=AGV-6 loser=AGV-1 ; AGV-1(0.701) vs AGV-7(0.714) -> winner=AGV-7 loser=AGV-1 ; AGV-1(0.701) vs AGV-8(0.708) -> winner=AGV-8 loser=AGV-1 ; AGV-1(0.701) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-1 ; AGV-1(0.701) vs AGV-10(0.699) -> winner=AGV-1 loser=AGV-10 ; AGV-1(0.701) vs AGV-11(0.714) -> winner=AGV-11 loser=AGV-1 ; AGV-2(0.718) vs AGV-3(0.705) -> winner=AGV-2 loser=AGV-3 ; AGV-2(0.718) vs AGV-4(0.711) -> winner=AGV-2 loser=AGV-4 ; AGV-2(0.718) vs AGV-5(0.699) -> winner=AGV-2 loser=AGV-5 ; AGV-2(0.718) vs AGV-6(0.714) -> winner=AGV-2 loser=AGV-6 ; AGV-2(0.718) vs AGV-7(0.714) -> winner=AGV-2 loser=AGV-7 ; AGV-2(0.718) vs AGV-8(0.708) -> winner=AGV-2 loser=AGV-8 ; AGV-2(0.718) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-2 ; AGV-2(0.718) vs AGV-10(0.699) -> winner=AGV-2 loser=AGV-10 ; AGV-2(0.718) vs AGV-11(0.714) -> winner=AGV-2 loser=AGV-11 ; AGV-3(0.705) vs AGV-4(0.711) -> winner=AGV-4 loser=AGV-3 ; AGV-3(0.705) vs AGV-5(0.699) -> winner=AGV-3 loser=AGV-5 ; AGV-3(0.705) vs AGV-6(0.714) -> winner=AGV-6 loser=AGV-3 ; AGV-3(0.705) vs AGV-7(0.714) -> winner=AGV-7 loser=AGV-3 ; AGV-3(0.705) vs AGV-8(0.708) -> winner=AGV-8 loser=AGV-3 ; AGV-3(0.705) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-3 ; AGV-3(0.705) vs AGV-10(0.699) -> winner=AGV-3 loser=AGV-10 ; AGV-3(0.705) vs AGV-11(0.714) -> winner=AGV-11 loser=AGV-3 ; AGV-4(0.711) vs AGV-5(0.699) -> winner=AGV-4 loser=AGV-5 ; AGV-4(0.711) vs AGV-6(0.714) -> winner=AGV-6 loser=AGV-4 ; AGV-4(0.711) vs AGV-7(0.714) -> winner=AGV-7 loser=AGV-4 ; AGV-4(0.711) vs AGV-8(0.708) -> winner=AGV-4 loser=AGV-8 ; AGV-4(0.711) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-4 ; AGV-4(0.711) vs AGV-10(0.699) -> winner=AGV-4 loser=AGV-10 ; AGV-4(0.711) vs AGV-11(0.714) -> winner=AGV-11 loser=AGV-4 ; AGV-5(0.699) vs AGV-6(0.714) -> winner=AGV-6 loser=AGV-5 ; AGV-5(0.699) vs AGV-7(0.714) -> winner=AGV-7 loser=AGV-5 ; AGV-5(0.699) vs AGV-8(0.708) -> winner=AGV-8 loser=AGV-5 ; AGV-5(0.699) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-5 ; AGV-5(0.699) vs AGV-10(0.699) -> winner=AGV-5 loser=AGV-10 ; AGV-5(0.699) vs AGV-11(0.714) -> winner=AGV-11 loser=AGV-5 ; AGV-6(0.714) vs AGV-7(0.714) -> winner=AGV-6 loser=AGV-7 ; AGV-6(0.714) vs AGV-8(0.708) -> winner=AGV-6 loser=AGV-8 ; AGV-6(0.714) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-6 ; AGV-6(0.714) vs AGV-10(0.699) -> winner=AGV-6 loser=AGV-10 ; AGV-6(0.714) vs AGV-11(0.714) -> winner=AGV-6 loser=AGV-11 ; AGV-7(0.714) vs AGV-8(0.708) -> winner=AGV-7 loser=AGV-8 ; AGV-7(0.714) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-7 ; AGV-7(0.714) vs AGV-10(0.699) -> winner=AGV-7 loser=AGV-10 ; AGV-7(0.714) vs AGV-11(0.714) -> winner=AGV-7 loser=AGV-11 ; AGV-8(0.708) vs AGV-9(0.725) -> winner=AGV-9 loser=AGV-8 ; AGV-8(0.708) vs AGV-10(0.699) -> winner=AGV-8 loser=AGV-10 ; AGV-8(0.708) vs AGV-11(0.714) -> winner=AGV-11 loser=AGV-8 ; AGV-9(0.725) vs AGV-10(0.699) -> winner=AGV-9 loser=AGV-10 ; AGV-9(0.725) vs AGV-11(0.714) -> winner=AGV-9 loser=AGV-11 ; AGV-10(0.699) vs AGV-11(0.714) -> winner=AGV-11 loser=AGV-10
+  winner=AGV-11 | loser=AGV-3
+  strategy=wait_then_replan | 冲突前一节点停车等待，窗口释放后重规划
+  yield_goal=[13,4]
+  detailed_conflict_history:
+    conflict #1
+      detected_at_t=10 | predicted_conflict_t=14 | lead_time=4
+      self=AGV-1 | blocker=AGV-2 | source=window | window_type=reserved_node | classified=Node contention
+      self_state=Moving_Drop | self_pos=[11,11] | self_next=[12,11]
+      blocker_state=Moving_Pick | blocker_pos=[16,6] | blocker_next=[16,7]
+      conflict_node=[16,11]
+      priority(self)=0.699 | priority(blocker)=0.716 | winner=AGV-2 | loser=AGV-1
+      reason=source=window, window=reserved_node. same target contention inferred: self_next=[12,11], blocker_next=[16,7].
+      resolution=wait_then_replan | 冲突前一节点停车等待，窗口释放后重规划
+      yield_goal=[15,11]
+      replanned_path=[15,11] -> [16,11] -> [17,11] -> [18,11] -> [19,11] -> [20,11]
+    conflict #2
+      detected_at_t=10 | predicted_conflict_t=13 | lead_time=3
+      self=AGV-3 | blocker=AGV-4 | source=window | window_type=reserved_edge_swap | classified=Head-on swap
+      self_state=Moving_Drop | self_pos=[13,3] | self_next=[13,4]
+      blocker_state=Moving_Pick | blocker_pos=[13,10] | blocker_next=[13,9]
+      conflict_node=[13,7]
+      priority(self)=0.703 | priority(blocker)=0.708 | winner=AGV-4 | loser=AGV-3
+      reason=source=window, window=reserved_edge_swap. swap detected: self_next=[13,4] == blocker_pos=[13,10] and blocker_next=[13,9] == self_pos=[13,3].
+      resolution=replan_original_target | edge-swap: loser replans first
+      replanned_path=[13,3] -> [14,3] -> [14,4] -> [14,5] -> [14,6] -> [14,7] -> [14,8] -> [14,9] -> ... (11 nodes)
+    conflict #3
+      detected_at_t=10 | predicted_conflict_t=12 | lead_time=2
+      self=AGV-5 | blocker=AGV-6 | source=window | window_type=reserved_edge_swap | classified=Head-on swap
+      self_state=Moving_Drop | self_pos=[3,14] | self_next=[4,14]
+      blocker_state=Moving_Drop | blocker_pos=[8,14] | blocker_next=[7,14]
+      conflict_node=[6,14]
+      priority(self)=0.697 | priority(blocker)=0.711 | winner=AGV-6 | loser=AGV-5
+      reason=source=window, window=reserved_edge_swap. swap detected: self_next=[4,14] == blocker_pos=[8,14] and blocker_next=[7,14] == self_pos=[3,14].
+      resolution=replan_original_target | edge-swap: loser replans first
+      replanned_path=[3,14] -> [3,13] -> [4,13] -> [5,13] -> [6,13] -> [7,13] -> [8,13] -> [8,14]
+    conflict #4
+      detected_at_t=10 | predicted_conflict_t=11 | lead_time=1
+      self=AGV-8 | blocker=AGV-9 | source=window | window_type=reserved_node | classified=Occupied node
+      self_state=Moving_Drop | self_pos=[3,1] | self_next=[3,2]
+      blocker_state=Loading | blocker_pos=[3,3] | blocker_next=[3,4]
+      conflict_node=[3,3]
+      priority(self)=0.706 | priority(blocker)=0.723 | winner=AGV-9 | loser=AGV-8
+      reason=source=window, window=reserved_node. self_next=[3,2] equals blocker_pos=[3,3], blocker_status=Loading, blocker_next=[3,4].
+      resolution=replan_original_target | occupied node: moving AGV replans around static blocker
+      replanned_path=[3,1] -> [3,2] -> [2,2] -> [2,3] -> [2,4] -> [2,5] -> [2,6] -> [3,6]
+    conflict #5
+      detected_at_t=11 | predicted_conflict_t=16 | lead_time=5
+      self=AGV-3 | blocker=AGV-10 | source=window | window_type=reserved_node | classified=Rear-end
+      self_state=Moving_Drop | self_pos=[13,3] | self_next=[14,3]
+      blocker_state=Moving_Drop | blocker_pos=[14,5] | blocker_next=[14,6]
+      conflict_node=[14,8]
+      priority(self)=0.703 | priority(blocker)=0.697 | winner=AGV-10 | loser=AGV-3
+      reason=source=window, window=reserved_node. same travel direction inferred: self_pos=[13,3] -> self_next=[14,3], blocker_pos=[14,5] -> blocker_next=[14,6].
+      resolution=replan_original_target | rear-end: faster follower overtakes via bypass
+      replanned_path=[13,3] -> [13,4] -> [13,5] -> [13,6] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> ... (9 nodes)
+    conflict #6
+      detected_at_t=12 | predicted_conflict_t=13 | lead_time=1
+      self=AGV-3 | blocker=AGV-4 | source=window | window_type=reserved_node | classified=Head-on meet
+      self_state=Moving_Drop | self_pos=[13,4] | self_next=[13,5]
+      blocker_state=Moving_Pick | blocker_pos=[13,8] | blocker_next=[13,7]
+      conflict_node=[13,6]
+      priority(self)=0.704 | priority(blocker)=0.709 | winner=AGV-4 | loser=AGV-3
+      reason=source=window, window=reserved_node. opposite directions into same conflict node=[13,6]: self [13,5]->[13,6], blocker [13,7]->[13,6].
+      resolution=replan_original_target | head-on meet: loser replans first
+      replanned_path=[13,4] -> [14,4] -> [14,5] -> [14,6] -> [14,7] -> [14,8] -> [14,9] -> [14,10] -> ... (10 nodes)
+    conflict #7
+      detected_at_t=13 | predicted_conflict_t=13 | lead_time=0
+      self=AGV-3 | blocker=AGV-11 | source=runtime | window_type=none | classified=Node contention
+      self_state=Moving_Drop | self_pos=[13,4] | self_next=[14,4]
+      blocker_state=Moving_Drop | blocker_pos=[14,3] | blocker_next=[14,4]
+      conflict_node=[14,4]
+      priority(self)=0.704 | priority(blocker)=0.712 | winner=AGV-11 | loser=AGV-3
+      reason=source=runtime. same target contention inferred: self_next=[14,4], blocker_next=[14,4].
+      resolution=wait_then_replan | 冲突前一节点停车等待，窗口释放后重规划
+      yield_goal=[13,4]
+      replanned_path=[13,4] -> [13,5] -> [13,6] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> [13,11]
+    conflict #8
+      detected_at_t=14 | predicted_conflict_t=15 | lead_time=1
+      self=AGV-4 | blocker=AGV-3 | source=window | window_type=reserved_node | classified=Occupied node
+      self_state=Moving_Pick | self_pos=[13,6] | self_next=[13,5]
+      blocker_state=Waiting_Clearance | blocker_pos=[13,4] | blocker_next=[14,4]
+      conflict_node=[13,4]
+      priority(self)=0.709 | priority(blocker)=0.704 | winner=AGV-3 | loser=AGV-4
+      reason=source=window, window=reserved_node. self_next=[13,5] equals blocker_pos=[13,4], blocker_status=Waiting_Clearance, blocker_next=[14,4].
+      resolution=replan_original_target | occupied node: moving AGV replans around static blocker
+      replanned_path=[13,6] -> [13,5] -> [12,5] -> [12,4] -> [12,3] -> [12,2] -> [13,2]
+    conflict #9
+      detected_at_t=15 | predicted_conflict_t=15 | lead_time=0
+      self=AGV-3 | blocker=AGV-4 | source=runtime | window_type=none | classified=Head-on meet
+      self_state=Moving_Drop | self_pos=[13,4] | self_next=[13,5]
+      blocker_state=Moving_Pick | blocker_pos=[13,6] | blocker_next=[13,5]
+      conflict_node=[13,5]
+      priority(self)=0.704 | priority(blocker)=0.710 | winner=AGV-4 | loser=AGV-3
+      reason=source=runtime. opposite directions into same conflict node=[13,5]: self [13,4]->[13,5], blocker [13,6]->[13,5].
+      resolution=replan_original_target | head-on meet: loser replans first
+      replanned_path=[13,4] -> [14,4] -> [14,5] -> [14,6] -> [14,7] -> [14,8] -> [14,9] -> [14,10] -> ... (10 nodes)
+    conflict #10
+      detected_at_t=15 | predicted_conflict_t=16 | lead_time=1
+      self=AGV-11 | blocker=AGV-10 | source=window | window_type=reserved_node | classified=Rear-end
+      self_state=Moving_Drop | self_pos=[14,5] | self_next=[14,6]
+      blocker_state=Moving_Drop | blocker_pos=[14,7] | blocker_next=[14,8]
+      conflict_node=[14,7]
+      priority(self)=0.713 | priority(blocker)=0.698 | winner=AGV-10 | loser=AGV-11
+      reason=source=window, window=reserved_node. same travel direction inferred: self_pos=[14,5] -> self_next=[14,6], blocker_pos=[14,7] -> blocker_next=[14,8].
+      resolution=replan_original_target | rear-end: faster follower overtakes via bypass
+      replanned_path=[14,5] -> [13,5] -> [13,6] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> [14,10]
+    conflict #11
+      detected_at_t=16 | predicted_conflict_t=16 | lead_time=0
+      self=AGV-4 | blocker=AGV-11 | source=runtime | window_type=none | classified=Head-on swap
+      self_state=Moving_Pick | self_pos=[13,6] | self_next=[13,5]
+      blocker_state=Moving_Drop | blocker_pos=[13,5] | blocker_next=[13,6]
+      conflict_node=[13,5]
+      priority(self)=0.710 | priority(blocker)=0.713 | winner=AGV-11 | loser=AGV-4
+      reason=source=runtime. swap detected: self_next=[13,5] == blocker_pos=[13,5] and blocker_next=[13,6] == self_pos=[13,6].
+      resolution=replan_original_target | edge-swap: loser replans first
+      replanned_path=[13,6] -> [12,6] -> [12,5] -> [12,4] -> [12,3] -> [12,2] -> [13,2]
+    conflict #12
+      detected_at_t=17 | predicted_conflict_t=20 | lead_time=3
+      self=AGV-3 | blocker=AGV-10 | source=window | window_type=reserved_node | classified=Occupied node
+      self_state=Moving_Drop | self_pos=[14,4] | self_next=[14,5]
+      blocker_state=Idle | blocker_pos=[14,8] | blocker_next=[14,8]
+      conflict_node=[14,8]
+      priority(self)=0.705 | priority(blocker)=0.699 | winner=AGV-10 | loser=AGV-3
+      reason=source=window, window=reserved_node. self_next=[14,5] equals blocker_pos=[14,8], blocker_status=Idle, blocker_next=[14,8].
+      resolution=replan_original_target | occupied node: moving AGV replans around static blocker
+      replanned_path=[14,4] -> [14,5] -> [14,6] -> [14,7] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> ... (9 nodes)
+    conflict #13
+      detected_at_t=17 | predicted_conflict_t=17 | lead_time=0
+      self=AGV-11 | blocker=AGV-4 | source=window | window_type=reserved_node | classified=Rear-end
+      self_state=Moving_Drop | self_pos=[13,5] | self_next=[13,6]
+      blocker_state=Moving_Pick | blocker_pos=[13,6] | blocker_next=[12,6]
+      conflict_node=[13,6]
+      priority(self)=0.713 | priority(blocker)=0.710 | winner=AGV-4 | loser=AGV-11
+      reason=source=window, window=reserved_node. same travel direction inferred: self_pos=[13,5] -> self_next=[13,6], blocker_pos=[13,6] -> blocker_next=[12,6].
+      resolution=replan_original_target | rear-end: faster follower overtakes via bypass
+      replanned_path=[13,5] -> [14,5] -> [14,6] -> [14,7] -> [14,8] -> [14,9] -> [14,10]
+    conflict #14
+      detected_at_t=18 | predicted_conflict_t=18 | lead_time=0
+      self=AGV-3 | blocker=AGV-11 | source=window | window_type=reserved_node | classified=Rear-end
+      self_state=Moving_Drop | self_pos=[14,4] | self_next=[14,5]
+      blocker_state=Moving_Drop | blocker_pos=[14,5] | blocker_next=[14,6]
+      conflict_node=[14,5]
+      priority(self)=0.705 | priority(blocker)=0.713 | winner=AGV-11 | loser=AGV-3
+      reason=source=window, window=reserved_node. same travel direction inferred: self_pos=[14,4] -> self_next=[14,5], blocker_pos=[14,5] -> blocker_next=[14,6].
+      resolution=replan_original_target | rear-end: faster follower overtakes via bypass
+      replanned_path=[14,4] -> [13,4] -> [13,5] -> [13,6] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> ... (9 nodes)
+    conflict #15
+      detected_at_t=18 | predicted_conflict_t=20 | lead_time=2
+      self=AGV-11 | blocker=AGV-10 | source=window | window_type=reserved_node | classified=Occupied node
+      self_state=Moving_Drop | self_pos=[14,5] | self_next=[14,6]
+      blocker_state=Idle | blocker_pos=[14,8] | blocker_next=[14,8]
+      conflict_node=[14,8]
+      priority(self)=0.713 | priority(blocker)=0.699 | winner=AGV-10 | loser=AGV-11
+      reason=source=window, window=reserved_node. self_next=[14,6] equals blocker_pos=[14,8], blocker_status=Idle, blocker_next=[14,8].
+      resolution=replan_original_target | occupied node: moving AGV replans around static blocker
+      replanned_path=[14,5] -> [13,5] -> [13,6] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> [14,10]
+    conflict #16
+      detected_at_t=19 | predicted_conflict_t=19 | lead_time=0
+      self=AGV-3 | blocker=AGV-11 | source=runtime | window_type=none | classified=Node contention
+      self_state=Moving_Drop | self_pos=[13,4] | self_next=[13,5]
+      blocker_state=Moving_Drop | blocker_pos=[14,5] | blocker_next=[13,5]
+      conflict_node=[13,5]
+      priority(self)=0.705 | priority(blocker)=0.714 | winner=AGV-11 | loser=AGV-3
+      reason=source=runtime. same target contention inferred: self_next=[13,5], blocker_next=[13,5].
+      resolution=wait_then_replan | 冲突前一节点停车等待，窗口释放后重规划
+      yield_goal=[13,4]
+      replanned_path=[13,4] -> [13,5] -> [13,6] -> [13,7] -> [13,8] -> [13,9] -> [13,10] -> [13,11]
+  debug_logs:
+  interlock_graph[t=10]: AGV1->[AGV2]{Node contention/reserved_node@t=14} ; AGV3->[AGV4]{Head-on swap/reserved_edge_swap@t=13} ; AGV5->[AGV6]{Head-on swap/reserved_edge_swap@t=12} ; AGV8->[AGV9]{Occupied node/reserved_node@t=11}
+  interlock_graph[t=11]: AGV3->[AGV10]{Rear-end/reserved_node@t=16}
+  interlock_graph[t=12]: AGV3->[AGV4]{Head-on meet/reserved_node@t=13}
+  interlock_graph[t=13]: AGV3->[AGV11]{Node contention/none@t=13}
+  interlock_graph[t=14]: AGV4->[AGV3]{Occupied node/reserved_node@t=15}
+  interlock_graph[t=15]: AGV3->[AGV4]{Head-on meet/none@t=15} ; AGV11->[AGV10]{Rear-end/reserved_node@t=16}
+  post_strategy_block[t=15]: AGV4 blocked by AGV11 after breaker/strategy application
+  interlock_graph[t=16]: AGV4->[AGV11]{Head-on swap/none@t=16}
+  post_strategy_block[t=16]: AGV11 blocked by AGV4 after breaker/strategy application
+  interlock_graph[t=17]: AGV3->[AGV10]{Occupied node/reserved_node@t=20} ; AGV11->[AGV4]{Rear-end/reserved_node@t=17}
+  interlock_graph[t=18]: AGV3->[AGV11]{Rear-end/reserved_node@t=18} ; AGV11->[AGV10]{Occupied node/reserved_node@t=20}
+  interlock_graph[t=19]: AGV3->[AGV11]{Node contention/none@t=19}
+  time-node timeline after conflict handling:
+    node_contention | AGV-1: t=10->211(current) | t=11->211(hold) | t=12->231(executed) | t=13->251(executed) | t=14->271(executed) | t=15->291(executed) | t=16->291(hold) | t=17->311(executed) | t=18->331(executed) | t=19->351(executed) | t=20->371(executed) | t=21->391(executed)
+    node_contention | AGV-2: t=10->306(current) | t=11->307(executed) | t=12->308(executed) | t=13->309(executed) | t=14->310(executed) | t=15->311(executed) | t=16->312(executed) | t=17->313(executed) | t=18->314(executed) | t=19->315(executed)
+    node_contention | AGV-3: t=10->243(current) | t=11->243(hold) | t=12->244(replan_original_target) | t=13->244(hold) | t=14->244(hold) | t=15->244(hold) | t=16->244(hold) | t=17->264(executed) | t=18->264(hold) | t=19->244(replan_original_target) | t=20->244(hold) | t=21->244(hold) | t=22->245(executed) | t=23->246(executed) | t=24->247(executed) | t=25->248(executed) | t=26->249(executed) | t=27->250(executed) | t=28->251(executed)
+    node_contention | AGV-4: t=10->250(current) | t=11->249(executed) | t=12->248(executed) | t=13->247(executed) | t=14->246(executed) | t=15->246(hold) | t=16->246(hold) | t=17->246(hold) | t=18->226(executed) | t=19->225(executed) | t=20->224(executed) | t=21->223(executed) | t=22->222(executed) | t=23->242(executed)
+    node_contention | AGV-5: t=10->54(current) | t=11->54(hold) | t=12->53(executed) | t=13->73(executed) | t=14->93(executed) | t=15->113(executed) | t=16->133(executed) | t=17->153(executed) | t=18->154(executed)
+    node_contention | AGV-6: t=10->154(current) | t=11->134(executed) | t=12->114(executed) | t=13->94(executed) | t=14->74(executed) | t=15->54(executed)
+    node_contention | AGV-7: t=10->235(current) | t=11->234(executed) | t=12->233(executed) | t=13->232(executed) | t=14->231(executed) | t=15->230(executed)
+    node_contention | AGV-8: t=10->41(current) | t=11->41(hold) | t=12->42(executed) | t=13->22(executed) | t=14->23(executed) | t=15->24(executed) | t=16->25(executed) | t=17->26(executed) | t=18->46(executed)
+    node_contention | AGV-9: t=10->43(current) | t=11->43(hold) | t=12->43(hold) | t=13->43(hold) | t=14->43(hold) | t=15->43(hold) | t=16->44(executed)
+    node_contention | AGV-10: t=10->264(current) | t=11->264(hold) | t=12->265(executed) | t=13->265(hold) | t=14->266(executed) | t=15->266(hold) | t=16->267(executed) | t=17->267(hold) | t=18->268(executed)
+    node_contention | AGV-11: t=10->241(current) | t=11->261(executed) | t=12->262(executed) | t=13->263(executed) | t=14->264(executed) | t=15->265(executed) | t=16->245(replan_original_target) | t=17->245(hold) | t=18->265(replan_original_target) | t=19->265(hold) | t=20->245(executed) | t=21->246(executed) | t=22->247(executed) | t=23->248(executed) | t=24->249(executed) | t=25->250(executed) | t=26->270(executed)

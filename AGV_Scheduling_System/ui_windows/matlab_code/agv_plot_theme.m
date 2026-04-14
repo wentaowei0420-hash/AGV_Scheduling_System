@@ -1,4 +1,4 @@
-﻿function style = agv_plot_theme(mode)
+function style = agv_plot_theme(mode)
 %AGV_PLOT_THEME Return unified plotting style configuration.
 %   style = agv_plot_theme() returns the default unified style struct.
 %   style = agv_plot_theme('presentation') returns the same style and keeps

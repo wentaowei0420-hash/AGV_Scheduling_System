@@ -1,5 +1,4 @@
 function score = calculate_predictive_ahp_priority(agv, task_list, current_t, future_t, agv_params_k)
-    % AHP 优先级【预测】评估算法 (基于滑动时间窗)
     
     persistent w;
     if isempty(w)

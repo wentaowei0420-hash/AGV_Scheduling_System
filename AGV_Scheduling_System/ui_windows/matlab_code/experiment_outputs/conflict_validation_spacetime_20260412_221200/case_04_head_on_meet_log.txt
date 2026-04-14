@@ -1,0 +1,26 @@
+
+[Case 4] head_on_meet
+  AGV-5: start=54 | via=[74   94  114  134] | end=154 | step_dur=1.00
+  AGV-6: start=154 | via=[134  114   94   74] | end=54 | step_dur=1.00
+  expected=Head-on meet | runtime_detected=0 | runtime_blocker=0 | classified=Head-on swap
+  event_window: detected=1 | blocker=6 | type=reserved_edge_swap | first_t=12
+  priority_first_decision[t=10]: AGV-5=0.697 | AGV-6=0.711
+  pairwise_first_decision[t=10]: AGV-5(0.697) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-5
+  priority_latest_decision[t=10]: AGV-5=0.697 | AGV-6=0.711
+  pairwise_latest_decision[t=10]: AGV-5(0.697) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-5
+  winner=AGV-6 | loser=AGV-5
+  strategy=replan_original_target | edge-swap: loser replans first
+  detailed_conflict_history:
+    conflict #1
+      detected_at_t=10 | predicted_conflict_t=12 | lead_time=2
+      self=AGV-5 | blocker=AGV-6 | source=window | window_type=reserved_edge_swap | classified=Head-on swap
+      self_state=Moving_Drop | self_pos=[3,14] | self_next=[4,14]
+      blocker_state=Moving_Drop | blocker_pos=[8,14] | blocker_next=[7,14]
+      conflict_node=[6,14]
+      priority(self)=0.697 | priority(blocker)=0.711 | winner=AGV-6 | loser=AGV-5
+      reason=source=window, window=reserved_edge_swap. swap detected: self_next=[4,14] == blocker_pos=[8,14] and blocker_next=[7,14] == self_pos=[3,14].
+      resolution=replan_original_target | edge-swap: loser replans first
+      replanned_path=[3,14] -> [3,13] -> [4,13] -> [5,13] -> [6,13] -> [7,13] -> [8,13] -> [8,14]
+  time-node timeline after conflict handling:
+    head_on_meet | AGV-5: t=10->54(current) | t=11->54(hold) | t=12->53(executed) | t=13->73(executed) | t=14->93(executed) | t=15->113(executed) | t=16->133(executed) | t=17->153(executed) | t=18->154(executed)
+    head_on_meet | AGV-6: t=10->154(current) | t=11->134(executed) | t=12->114(executed) | t=13->94(executed) | t=14->74(executed) | t=15->54(executed)

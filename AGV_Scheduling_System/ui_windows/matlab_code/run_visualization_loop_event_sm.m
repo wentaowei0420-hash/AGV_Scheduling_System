@@ -1,11 +1,7 @@
-﻿function run_visualization_loop_event_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+function run_visualization_loop_event_sm(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
     style = agv_plot_theme();
     init_agv_plot_defaults(style);
-    % Event-driven explicit state-machine variant.
-    % This version keeps the original task / path / conflict ideas,
-    % but advances simulation time by the next scheduled event instead of
-    % scanning every AGV at every discrete time step.
-
+    
     global mapW mapH;
     global costmap_type1 costmap_type2;
 
@@ -579,15 +575,6 @@
         blocker_pos = AGVs(blocker_id).pos;
         current_gap = abs(curr_pos(1) - blocker_pos(1)) + abs(curr_pos(2) - blocker_pos(2));
         candidate_nodes = [];
-
-        if ~isempty(AGVs(id).path)
-            backtrack_indices = [AGVs(id).path_idx - 2, AGVs(id).path_idx - 3];
-            for idx = backtrack_indices
-                if idx >= 1 && idx <= size(AGVs(id).path, 1)
-                    candidate_nodes = [candidate_nodes; AGVs(id).path(idx, 1:2)]; %#ok<AGROW>
-                end
-            end
-        end
 
         directions = [-1, 0; 1, 0; 0, -1; 0, 1];
         for d = 1:size(directions, 1)

@@ -32,7 +32,11 @@ function score = calculate_ahp_priority(agv, task_list, t)
 
     s_time = 0;
     if curr_task_id > 0
-        row_idx = find(task_list(:,1) == curr_task_id);
+        % Use the first matching task row only. Some validation scripts build
+        % task_list with repeated active_task_id values, and taking every match
+        % turns the scalar priority into a vector, which breaks callers such
+        % as arrayfun(..., 'UniformOutput', true).
+        row_idx = find(task_list(:,1) == curr_task_id, 1, 'first');
         if ~isempty(row_idx) && size(task_list, 2) >= 4
             deadline = task_list(row_idx, 4);
             rem_time = deadline - t;

@@ -1,4 +1,4 @@
-﻿function apply_agv_plot_theme(fig, style)
+function apply_agv_plot_theme(fig, style)
 %APPLY_AGV_PLOT_THEME Normalize figure-level plotting appearance.
 
     if nargin < 1 || isempty(fig)

@@ -1,4 +1,4 @@
-﻿function plot_path_result(map, path, start_rc, goal_rc, path_length, turn_count, expanded_nodes, algo_name, ax, gscore_matrix)
+function plot_path_result(map, path, start_rc, goal_rc, path_length, turn_count, expanded_nodes, algo_name, ax, gscore_matrix)
 style = agv_plot_theme();
 init_agv_plot_defaults(style);
 

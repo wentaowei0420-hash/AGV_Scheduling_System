@@ -1,0 +1,88 @@
+
+[用例 1] node_contention
+  AGV-1: 起始=211 | 途经=[231  251  271  291  311  331  351  371] | 终点=391 | 步长时长=1.00
+  AGV-2: 起始=306 | 途经=[307  308  309  310  311  312  313  314] | 终点=315 | 步长时长=1.00
+  AGV-3: 起始=243 | 途经=[244  245  246  247  248  249  250] | 终点=251 | 步长时长=1.00
+  AGV-4: 起始=250 | 途经=[249  248  247  246  245  244  243] | 终点=242 | 步长时长=1.00
+  AGV-5: 起始=54 | 途经=[74   94  114  134] | 终点=154 | 步长时长=1.00
+  AGV-6: 起始=154 | 途经=[134  114   94   74] | 终点=54 | 步长时长=1.00
+  AGV-7: 起始=235 | 途经=[234  233  231] | 终点=230 | 步长时长=1.00
+  AGV-8: 起始=41 | 途经=[42  43  44  45] | 终点=46 | 步长时长=1.00
+  AGV-9: 起始=43 | 途经=[43  43  43  43] | 终点=44 | 步长时长=1.00
+  AGV-10: 起始=178 | 途经=[198  218  238  258  278  298] | 终点=318 | 步长时长=2.00
+  AGV-11: 起始=218 | 途经=[238  258] | 终点=278 | 步长时长=1.00
+  预期=Node contention | 运行时检测=0 | 运行时阻塞=0 | 分类结果=Occupied node
+  事件窗口: 检测点=1 | 阻塞点=11 | 类型=reserved_node | 首次时间=18
+  优先级首次决策[t=10]: AGV-1=0.699 | AGV-2=0.716 | AGV-3=0.703 | AGV-4=0.708 | AGV-5=0.697 | AGV-6=0.711 | AGV-7=0.711 | AGV-8=0.706 | AGV-9=0.723 | AGV-10=0.697 | AGV-11=0.711
+  成对首次决策[t=10]: AGV-1(0.699) vs AGV-2(0.716) -> winner=AGV-2 loser=AGV-1 ; AGV-1(0.699) vs AGV-3(0.703) -> winner=AGV-3 loser=AGV-1 ; AGV-1(0.699) vs AGV-4(0.708) -> winner=AGV-4 loser=AGV-1 ; AGV-1(0.699) vs AGV-5(0.697) -> winner=AGV-1 loser=AGV-5 ; AGV-1(0.699) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-1 ; AGV-1(0.699) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-1 ; AGV-1(0.699) vs AGV-8(0.706) -> winner=AGV-8 loser=AGV-1 ; AGV-1(0.699) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-1 ; AGV-1(0.699) vs AGV-10(0.697) -> winner=AGV-1 loser=AGV-10 ; AGV-1(0.699) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-1 ; AGV-2(0.716) vs AGV-3(0.703) -> winner=AGV-2 loser=AGV-3 ; AGV-2(0.716) vs AGV-4(0.708) -> winner=AGV-2 loser=AGV-4 ; AGV-2(0.716) vs AGV-5(0.697) -> winner=AGV-2 loser=AGV-5 ; AGV-2(0.716) vs AGV-6(0.711) -> winner=AGV-2 loser=AGV-6 ; AGV-2(0.716) vs AGV-7(0.711) -> winner=AGV-2 loser=AGV-7 ; AGV-2(0.716) vs AGV-8(0.706) -> winner=AGV-2 loser=AGV-8 ; AGV-2(0.716) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-2 ; AGV-2(0.716) vs AGV-10(0.697) -> winner=AGV-2 loser=AGV-10 ; AGV-2(0.716) vs AGV-11(0.711) -> winner=AGV-2 loser=AGV-11 ; AGV-3(0.703) vs AGV-4(0.708) -> winner=AGV-4 loser=AGV-3 ; AGV-3(0.703) vs AGV-5(0.697) -> winner=AGV-3 loser=AGV-5 ; AGV-3(0.703) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-3 ; AGV-3(0.703) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-3 ; AGV-3(0.703) vs AGV-8(0.706) -> winner=AGV-8 loser=AGV-3 ; AGV-3(0.703) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-3 ; AGV-3(0.703) vs AGV-10(0.697) -> winner=AGV-3 loser=AGV-10 ; AGV-3(0.703) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-3 ; AGV-4(0.708) vs AGV-5(0.697) -> winner=AGV-4 loser=AGV-5 ; AGV-4(0.708) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-4 ; AGV-4(0.708) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-4 ; AGV-4(0.708) vs AGV-8(0.706) -> winner=AGV-4 loser=AGV-8 ; AGV-4(0.708) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-4 ; AGV-4(0.708) vs AGV-10(0.697) -> winner=AGV-4 loser=AGV-10 ; AGV-4(0.708) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-4 ; AGV-5(0.697) vs AGV-6(0.711) -> winner=AGV-6 loser=AGV-5 ; AGV-5(0.697) vs AGV-7(0.711) -> winner=AGV-7 loser=AGV-5 ; AGV-5(0.697) vs AGV-8(0.706) -> winner=AGV-8 loser=AGV-5 ; AGV-5(0.697) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-5 ; AGV-5(0.697) vs AGV-10(0.697) -> winner=AGV-5 loser=AGV-10 ; AGV-5(0.697) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-5 ; AGV-6(0.711) vs AGV-7(0.711) -> winner=AGV-6 loser=AGV-7 ; AGV-6(0.711) vs AGV-8(0.706) -> winner=AGV-6 loser=AGV-8 ; AGV-6(0.711) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-6 ; AGV-6(0.711) vs AGV-10(0.697) -> winner=AGV-6 loser=AGV-10 ; AGV-6(0.711) vs AGV-11(0.711) -> winner=AGV-6 loser=AGV-11 ; AGV-7(0.711) vs AGV-8(0.706) -> winner=AGV-7 loser=AGV-8 ; AGV-7(0.711) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-7 ; AGV-7(0.711) vs AGV-10(0.697) -> winner=AGV-7 loser=AGV-10 ; AGV-7(0.711) vs AGV-11(0.711) -> winner=AGV-7 loser=AGV-11 ; AGV-8(0.706) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-8 ; AGV-8(0.706) vs AGV-10(0.697) -> winner=AGV-8 loser=AGV-10 ; AGV-8(0.706) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-8 ; AGV-9(0.723) vs AGV-10(0.697) -> winner=AGV-9 loser=AGV-10 ; AGV-9(0.723) vs AGV-11(0.711) -> winner=AGV-9 loser=AGV-11 ; AGV-10(0.697) vs AGV-11(0.711) -> winner=AGV-11 loser=AGV-10
+  优先级最新决策[t=14]: AGV-1=0.700 | AGV-2=0.717 | AGV-3=0.704 | AGV-4=0.709 | AGV-5=0.698 | AGV-6=0.712 | AGV-7=0.712 | AGV-8=0.707 | AGV-9=0.724 | AGV-10=0.698 | AGV-11=0.712
+  成对最新决策[t=14]: AGV-1(0.700) vs AGV-2(0.717) -> winner=AGV-2 loser=AGV-1 ; AGV-1(0.700) vs AGV-3(0.704) -> winner=AGV-3 loser=AGV-1 ; AGV-1(0.700) vs AGV-4(0.709) -> winner=AGV-4 loser=AGV-1 ; AGV-1(0.700) vs AGV-5(0.698) -> winner=AGV-1 loser=AGV-5 ; AGV-1(0.700) vs AGV-6(0.712) -> winner=AGV-6 loser=AGV-1 ; AGV-1(0.700) vs AGV-7(0.712) -> winner=AGV-7 loser=AGV-1 ; AGV-1(0.700) vs AGV-8(0.707) -> winner=AGV-8 loser=AGV-1 ; AGV-1(0.700) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-1 ; AGV-1(0.700) vs AGV-10(0.698) -> winner=AGV-1 loser=AGV-10 ; AGV-1(0.700) vs AGV-11(0.712) -> winner=AGV-11 loser=AGV-1 ; AGV-2(0.717) vs AGV-3(0.704) -> winner=AGV-2 loser=AGV-3 ; AGV-2(0.717) vs AGV-4(0.709) -> winner=AGV-2 loser=AGV-4 ; AGV-2(0.717) vs AGV-5(0.698) -> winner=AGV-2 loser=AGV-5 ; AGV-2(0.717) vs AGV-6(0.712) -> winner=AGV-2 loser=AGV-6 ; AGV-2(0.717) vs AGV-7(0.712) -> winner=AGV-2 loser=AGV-7 ; AGV-2(0.717) vs AGV-8(0.707) -> winner=AGV-2 loser=AGV-8 ; AGV-2(0.717) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-2 ; AGV-2(0.717) vs AGV-10(0.698) -> winner=AGV-2 loser=AGV-10 ; AGV-2(0.717) vs AGV-11(0.712) -> winner=AGV-2 loser=AGV-11 ; AGV-3(0.704) vs AGV-4(0.709) -> winner=AGV-4 loser=AGV-3 ; AGV-3(0.704) vs AGV-5(0.698) -> winner=AGV-3 loser=AGV-5 ; AGV-3(0.704) vs AGV-6(0.712) -> winner=AGV-6 loser=AGV-3 ; AGV-3(0.704) vs AGV-7(0.712) -> winner=AGV-7 loser=AGV-3 ; AGV-3(0.704) vs AGV-8(0.707) -> winner=AGV-8 loser=AGV-3 ; AGV-3(0.704) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-3 ; AGV-3(0.704) vs AGV-10(0.698) -> winner=AGV-3 loser=AGV-10 ; AGV-3(0.704) vs AGV-11(0.712) -> winner=AGV-11 loser=AGV-3 ; AGV-4(0.709) vs AGV-5(0.698) -> winner=AGV-4 loser=AGV-5 ; AGV-4(0.709) vs AGV-6(0.712) -> winner=AGV-6 loser=AGV-4 ; AGV-4(0.709) vs AGV-7(0.712) -> winner=AGV-7 loser=AGV-4 ; AGV-4(0.709) vs AGV-8(0.707) -> winner=AGV-4 loser=AGV-8 ; AGV-4(0.709) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-4 ; AGV-4(0.709) vs AGV-10(0.698) -> winner=AGV-4 loser=AGV-10 ; AGV-4(0.709) vs AGV-11(0.712) -> winner=AGV-11 loser=AGV-4 ; AGV-5(0.698) vs AGV-6(0.712) -> winner=AGV-6 loser=AGV-5 ; AGV-5(0.698) vs AGV-7(0.712) -> winner=AGV-7 loser=AGV-5 ; AGV-5(0.698) vs AGV-8(0.707) -> winner=AGV-8 loser=AGV-5 ; AGV-5(0.698) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-5 ; AGV-5(0.698) vs AGV-10(0.698) -> winner=AGV-5 loser=AGV-10 ; AGV-5(0.698) vs AGV-11(0.712) -> winner=AGV-11 loser=AGV-5 ; AGV-6(0.712) vs AGV-7(0.712) -> winner=AGV-6 loser=AGV-7 ; AGV-6(0.712) vs AGV-8(0.707) -> winner=AGV-6 loser=AGV-8 ; AGV-6(0.712) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-6 ; AGV-6(0.712) vs AGV-10(0.698) -> winner=AGV-6 loser=AGV-10 ; AGV-6(0.712) vs AGV-11(0.712) -> winner=AGV-6 loser=AGV-11 ; AGV-7(0.712) vs AGV-8(0.707) -> winner=AGV-7 loser=AGV-8 ; AGV-7(0.712) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-7 ; AGV-7(0.712) vs AGV-10(0.698) -> winner=AGV-7 loser=AGV-10 ; AGV-7(0.712) vs AGV-11(0.712) -> winner=AGV-7 loser=AGV-11 ; AGV-8(0.707) vs AGV-9(0.724) -> winner=AGV-9 loser=AGV-8 ; AGV-8(0.707) vs AGV-10(0.698) -> winner=AGV-8 loser=AGV-10 ; AGV-8(0.707) vs AGV-11(0.712) -> winner=AGV-11 loser=AGV-8 ; AGV-9(0.724) vs AGV-10(0.698) -> winner=AGV-9 loser=AGV-10 ; AGV-9(0.724) vs AGV-11(0.712) -> winner=AGV-9 loser=AGV-11 ; AGV-10(0.698) vs AGV-11(0.712) -> winner=AGV-11 loser=AGV-10
+  胜者=AGV-11 | 败者=AGV-10
+  策略=replan_original_target | occupied node: moving AGV replans around static blocker
+  详细冲突历史:
+    冲突 #1
+      检测时间=10 | 预测冲突时间=14 | 提前时间=4
+      自身=AGV-1 | 阻塞者=AGV-2 | 来源=window | 窗口类型=reserved_node | 分类=Node contention
+      自身状态=Moving_Drop | 自身位置=[11,11] | 下一节点=[12,11]
+      阻塞者状态=Moving_Pick | 阻塞者位置=[16,6] | 下一节点=[16,7]
+      冲突节点=[16,11]
+      优先级(自身)=0.699 | 优先级(阻塞者)=0.716 | 胜者=AGV-2 | 败者=AGV-1
+      原因=source=window, window=reserved_node. same target contention inferred: self_next=[12,11], blocker_next=[16,7].
+      解决方式=wait_then_replan | 冲突前一节点停车等待，窗口释放后重规划
+      让行目标=[15,11]
+      重规划路径=[15,11] -> [16,11] -> [17,11] -> [18,11] -> [19,11] -> [20,11]
+    冲突 #2
+      检测时间=10 | 预测冲突时间=13 | 提前时间=3
+      自身=AGV-3 | 阻塞者=AGV-4 | 来源=window | 窗口类型=reserved_edge_swap | 分类=Head-on swap
+      自身状态=Moving_Drop | 自身位置=[13,3] | 下一节点=[13,4]
+      阻塞者状态=Moving_Pick | 阻塞者位置=[13,10] | 下一节点=[13,9]
+      冲突节点=[13,7]
+      优先级(自身)=0.703 | 优先级(阻塞者)=0.708 | 胜者=AGV-4 | 败者=AGV-3
+      原因=source=window, window=reserved_edge_swap. swap detected: self_next=[13,4] == blocker_pos=[13,10] and blocker_next=[13,9] == self_pos=[13,3].
+      解决方式=replan_original_target | edge-swap: loser replans first
+      重规划路径=[13,3] -> [14,3] -> [14,4] -> [14,5] -> [14,6] -> [14,7] -> [14,8] -> [14,9] -> ... (11 个节点)
+    冲突 #3
+      检测时间=10 | 预测冲突时间=12 | 提前时间=2
+      自身=AGV-5 | 阻塞者=AGV-6 | 来源=window | 窗口类型=reserved_edge_swap | 分类=Head-on swap
+      自身状态=Moving_Drop | 自身位置=[3,14] | 下一节点=[4,14]
+      阻塞者状态=Moving_Drop | 阻塞者位置=[8,14] | 下一节点=[7,14]
+      冲突节点=[6,14]
+      优先级(自身)=0.697 | 优先级(阻塞者)=0.711 | 胜者=AGV-6 | 败者=AGV-5
+      原因=source=window, window=reserved_edge_swap. swap detected: self_next=[4,14] == blocker_pos=[8,14] and blocker_next=[7,14] == self_pos=[3,14].
+      解决方式=replan_original_target | edge-swap: loser replans first
+      重规划路径=[3,14] -> [3,13] -> [4,13] -> [5,13] -> [6,13] -> [7,13] -> [8,13] -> [8,14]
+    冲突 #4
+      检测时间=10 | 预测冲突时间=11 | 提前时间=1
+      自身=AGV-8 | 阻塞者=AGV-9 | 来源=window | 窗口类型=reserved_node | 分类=Occupied node
+      自身状态=Moving_Drop | 自身位置=[3,1] | 下一节点=[3,2]
+      阻塞者状态=Loading | 阻塞者位置=[3,3] | 下一节点=[3,4]
+      冲突节点=[3,3]
+      优先级(自身)=0.706 | 优先级(阻塞者)=0.723 | 胜者=AGV-9 | 败者=AGV-8
+      原因=source=window, window=reserved_node. self_next=[3,2] equals blocker_pos=[3,3], blocker_status=Loading, blocker_next=[3,4].
+      解决方式=replan_original_target | occupied node: moving AGV replans around static blocker
+      重规划路径=[3,1] -> [3,2] -> [2,2] -> [2,3] -> [2,4] -> [2,5] -> [2,6] -> [3,6]
+    冲突 #5
+      检测时间=14 | 预测冲突时间=18 | 提前时间=4
+      自身=AGV-10 | 阻塞者=AGV-11 | 来源=window | 窗口类型=reserved_node | 分类=Occupied node
+      自身状态=Moving_Drop | 自身位置=[11,18] | 下一节点=[12,18]
+      阻塞者状态=Idle | 阻塞者位置=[14,18] | 下一节点=[14,18]
+      冲突节点=[14,18]
+      优先级(自身)=0.698 | 优先级(阻塞者)=0.712 | 胜者=AGV-11 | 败者=AGV-10
+      原因=source=window, window=reserved_node. self_next=[12,18] equals blocker_pos=[14,18], blocker_status=Idle, blocker_next=[14,18].
+      解决方式=replan_original_target | occupied node: moving AGV replans around static blocker
+      重规划路径=[11,18] -> [11,17] -> [12,17] -> [13,17] -> [14,17] -> [15,17] -> [16,17] -> [16,18]
+  调试日志:
+  interlock_graph[t=10]: AGV1->[AGV2]{Node contention/reserved_node@t=14} ; AGV3->[AGV4]{Head-on swap/reserved_edge_swap@t=13} ; AGV5->[AGV6]{Head-on swap/reserved_edge_swap@t=12} ; AGV8->[AGV9]{Occupied node/reserved_node@t=11}
+  interlock_graph[t=14]: AGV10->[AGV11]{Occupied node/reserved_node@t=18}
+  冲突处理后时间-节点时间线:
+    node_contention | AGV-1: t=10->211(current) | t=11->211(hold) | t=12->231(executed) | t=13->251(executed) | t=14->271(executed) | t=15->291(executed) | t=16->291(hold) | t=17->311(executed) | t=18->331(executed) | t=19->351(executed) | t=20->371(executed) | t=21->391(executed)
+    node_contention | AGV-2: t=10->306(current) | t=11->307(executed) | t=12->308(executed) | t=13->309(executed) | t=14->310(executed) | t=15->311(executed) | t=16->312(executed) | t=17->313(executed) | t=18->314(executed) | t=19->315(executed)
+    node_contention | AGV-3: t=10->243(current) | t=11->243(hold) | t=12->263(executed) | t=13->264(executed) | t=14->265(executed) | t=15->266(executed) | t=16->267(executed) | t=17->268(executed) | t=18->269(executed) | t=19->270(executed) | t=20->271(executed) | t=21->251(executed)
+    node_contention | AGV-4: t=10->250(current) | t=11->249(executed) | t=12->248(executed) | t=13->247(executed) | t=14->246(executed) | t=15->245(executed) | t=16->244(executed) | t=17->243(executed) | t=18->242(executed)
+    node_contention | AGV-5: t=10->54(current) | t=11->54(hold) | t=12->53(executed) | t=13->73(executed) | t=14->93(executed) | t=15->113(executed) | t=16->133(executed) | t=17->153(executed) | t=18->154(executed)
+    node_contention | AGV-6: t=10->154(current) | t=11->134(executed) | t=12->114(executed) | t=13->94(executed) | t=14->74(executed) | t=15->54(executed)
+    node_contention | AGV-7: t=10->235(current) | t=11->234(executed) | t=12->233(executed) | t=13->232(executed) | t=14->231(executed) | t=15->230(executed)
+    node_contention | AGV-8: t=10->41(current) | t=11->41(hold) | t=12->42(executed) | t=13->22(executed) | t=14->23(executed) | t=15->24(executed) | t=16->25(executed) | t=17->26(executed) | t=18->46(executed)
+    node_contention | AGV-9: t=10->43(current) | t=11->43(hold) | t=12->43(hold) | t=13->43(hold) | t=14->43(hold) | t=15->43(hold) | t=16->44(executed)
+    node_contention | AGV-10: t=10->178(current) | t=11->178(hold) | t=12->198(executed) | t=13->198(hold) | t=14->218(executed) | t=15->218(hold) | t=16->218(hold) | t=17->218(hold) | t=18->217(executed) | t=19->217(hold) | t=20->237(executed) | t=21->237(hold) | t=22->257(executed) | t=23->257(hold) | t=24->277(executed) | t=25->277(hold) | t=26->297(executed) | t=27->297(hold) | t=28->317(executed) | t=29->317(hold) | t=30->318(executed)
+    node_contention | AGV-11: t=10->218(current) | t=11->238(executed) | t=12->258(executed) | t=13->278(executed)
