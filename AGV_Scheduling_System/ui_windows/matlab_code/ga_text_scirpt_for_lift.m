@@ -141,7 +141,7 @@ function ga_text_scirpt_for_lift()
     xlabel('迭代次数 (Generation)', 'FontSize', 12);
     ylabel('系统总能耗 (Energy / 相对单位)', 'FontSize', 12);
     grid on; set(gca, 'GridAlpha', 0.3);
-    legend('Location', 'northeast');
+    legend('Location', 'northeast', 'FontSize', 12, 'FontWeight', 'bold');
     axis tight;
 
     % 图：最大完工时间对比
@@ -152,7 +152,7 @@ function ga_text_scirpt_for_lift()
     xlabel('迭代次数 (Generation)', 'FontSize', 12);
     ylabel('最大完工时间 (Time / s)', 'FontSize', 12);
     grid on; set(gca, 'GridAlpha', 0.3);
-    legend('Location', 'northeast');
+    legend('Location', 'northeast', 'FontSize', 12, 'FontWeight', 'bold');
     axis tight;
 
     % 图：总距离对比
@@ -163,7 +163,7 @@ function ga_text_scirpt_for_lift()
     xlabel('迭代次数 (Generation)', 'FontSize', 12);
     ylabel('行驶总距离 (Distance / m)', 'FontSize', 12);
     grid on; set(gca, 'GridAlpha', 0.3);
-    legend('Location', 'northeast');
+    legend('Location', 'northeast', 'FontSize', 12, 'FontWeight', 'bold');
     axis tight;
 
     %% 绘制 3D Pareto 解集对比图（以托举式为例）

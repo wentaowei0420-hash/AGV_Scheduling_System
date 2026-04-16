@@ -244,16 +244,6 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 pm2 = pm_max;
             end
 
-            if stagnation_counter >= 12
-                pc = max(pc_min, pc - 0.08);
-                pm1 = min(0.18, pm1 + 0.05);
-                pm2 = min(0.18, pm2 + 0.05);
-            elseif stagnation_counter >= 6
-                pc = max(pc_min, pc - 0.04);
-                pm1 = min(0.16, pm1 + 0.025);
-                pm2 = min(0.16, pm2 + 0.025);
-            end
-
             % --- 交叉操作 ---
             % 如果随机数小于当前交叉概率pc，则对两个父代进行 IPOX-MPX 交叉（一种针对任务排序和分配的特殊交叉）
             if rand < pc
