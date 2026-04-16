@@ -56,11 +56,11 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
         [~, best_idx_in_front1] = min(compromise_scores);
         best_lift_chrom = pop_lift(front1_idx(best_idx_in_front1), :);
         
-        [sched_lift, best_objs_lift, batch_info_lift] = eval_lift_moo(best_lift_chrom);
+        [sched_lift, ~, batch_info_lift] = eval_lift_moo(best_lift_chrom);
         
-        dist_lift = best_objs_lift(1);          
-        time_lift = best_objs_lift(2);          
-        energy_lift = best_objs_lift(3);        
+        dist_lift = min_objs(1);          
+        time_lift = min_objs(2);          
+        energy_lift = min_objs(3);        
         
         for i = 1:length(agvs_lift)
             best_schedule{agvs_lift(i)} = sched_lift{i};
@@ -146,6 +146,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     % 【新增】：为每一代的帕累托前沿预分配内存
     gen_fronts_history = cell(1, max_gen); 
     log_interval = max(1, ceil(max_gen / 20));
+    max_obj_copies = 1;
     
     % --- 初始化种群 ---
     pop = zeros(pop_size, num_tasks * 2);
@@ -251,6 +252,8 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             end
             f = f + 1;
         end
+        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
+        [pop, pop_objs, ~] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
@@ -412,6 +415,7 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     % 【新增】：为每一代的帕累托前沿预分配内存
     gen_fronts_history = cell(1, max_gen); 
     log_interval = max(1, ceil(max_gen / 20));
+    max_obj_copies = 1;
     
     % --- 1. 初始化种群 ---
     pop = zeros(pop_size, num_tasks * 2);
@@ -528,6 +532,9 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
             end
             f = f + 1;
         end
+
+        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
+        [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
         
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
@@ -542,10 +549,12 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
         if should_log_iteration(gen, max_gen, log_interval)
-            log_fork_front_summary('BASESTD-FORK', 'gen', gen, max_gen, pop, pop_objs, front1, num_tasks, num_sub_agvs);
+            log_fork_front_summary('BASESTD-FORK', 'gen', gen, max_gen, pop, pop_objs, front1, num_tasks, num_sub_agvs, ...
+                struct('immigrants', 0, 'replaced', replaced_count, 'stall', 0));
         end
     end
-    log_fork_front_summary('BASESTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs);
+    log_fork_front_summary('BASESTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
+        struct('immigrants', 0, 'replaced', 0, 'stall', 0));
 end
 
 function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
@@ -841,6 +850,60 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
     [map_rows, map_cols] = size(cost_map);
 end
 
+function [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_agvs, eval_func, max_obj_copies)
+    replaced_count = 0;
+    rounded_objs = quantize_moo_objectives(pop_objs);
+    [~, ~, obj_group] = unique(rounded_objs, 'rows', 'stable');
+    for group_id = 1:max(obj_group)
+        members = find(obj_group == group_id);
+        if numel(members) <= max_obj_copies
+            continue;
+        end
+        overflow = members(max_obj_copies + 1:end);
+        for k = 1:numel(overflow)
+            idx = overflow(k);
+            pop(idx, 1:num_tasks) = randperm(num_tasks);
+            pop(idx, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
+            [~, obj] = eval_func(pop(idx, :));
+            pop_objs(idx, :) = obj;
+            replaced_count = replaced_count + 1;
+        end
+    end
+end
+
+function [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_objs, front_idx, num_tasks, num_agvs, eval_func, max_obj_copies)
+    replaced_count = 0;
+    if isempty(front_idx)
+        return;
+    end
+
+    rounded_front = quantize_moo_objectives(pop_objs(front_idx, :));
+    [~, ~, obj_group] = unique(rounded_front, 'rows', 'stable');
+    for group_id = 1:max(obj_group)
+        members = front_idx(obj_group == group_id);
+        if numel(members) <= max_obj_copies
+            continue;
+        end
+        overflow = members(max_obj_copies + 1:end);
+        for k = 1:numel(overflow)
+            idx = overflow(k);
+            pop(idx, 1:num_tasks) = randperm(num_tasks);
+            pop(idx, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
+            [~, obj] = eval_func(pop(idx, :));
+            pop_objs(idx, :) = obj;
+            replaced_count = replaced_count + 1;
+        end
+    end
+end
+
+function unique_front = count_unique_front_objs(front_objs)
+    unique_front = size(unique(quantize_moo_objectives(front_objs), 'rows'), 1);
+end
+
+function rounded_objs = quantize_moo_objectives(pop_objs)
+    rounded_objs = [round(pop_objs(:, 1), 0), round(pop_objs(:, 2), 1), round(pop_objs(:, 3), 3)];
+end
+
 function tf = should_log_iteration(gen, max_gen, log_interval)
     tf = (gen == 1) || (gen == max_gen) || (mod(gen, log_interval) == 0);
 end
@@ -853,7 +916,7 @@ end
 function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compromise_selector)
     front_objs = pop_objs(front_idx, :);
     raw_front = size(front_objs, 1);
-    unique_front = size(unique(front_objs, 'rows'), 1);
+    unique_front = count_unique_front_objs(front_objs);
     min_objs = min(front_objs, [], 1);
     rep_idx = compromise_selector(front_objs);
     compromise = front_objs(rep_idx, :);
@@ -869,11 +932,14 @@ function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compro
     end
 end
 
-function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_idx, num_tasks, num_agvs)
+function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_idx, num_tasks, num_agvs, stats)
+    if nargin < 10 || isempty(stats)
+        stats = struct('immigrants', 0, 'replaced', 0, 'stall', 0);
+    end
     front_objs = pop_objs(front_idx, :);
     front_pop = pop(front_idx, :);
     raw_front = size(front_objs, 1);
-    unique_front = size(unique(front_objs, 'rows'), 1);
+    unique_front = count_unique_front_objs(front_objs);
     min_objs = min(front_objs, [], 1);
 
     rep_idx = select_compromise_index(front_objs);
@@ -896,4 +962,6 @@ function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_i
 
     fprintf('      [%s] %-5s | compromiseLoad=%s | bestTime=[%.1f %.1f %.3f] | bestTimeLoad=%s\n', ...
         tag, phase, mat2str(compromise_load), best_time(1), best_time(2), best_time(3), mat2str(best_time_load));
+    fprintf('      [%s] %-5s | immigrants=%d | replaced=%d | stall=%d\n', ...
+        tag, phase, stats.immigrants, stats.replaced, stats.stall);
 end

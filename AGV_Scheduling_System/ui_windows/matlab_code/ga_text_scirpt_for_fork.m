@@ -2,6 +2,9 @@ function ga_text_scirpt_for_fork()
     clc;
     close all;
     clear;
+    plot_data_opts = struct( ...
+        'mode', 'live', ...
+        'prefer_saved_for_plot', false);
 
     %% 1. 定义仿真场景与参数
     disp('>> [1/4] 正在初始化环境与物理参数...');
@@ -88,9 +91,17 @@ function ga_text_scirpt_for_fork()
 
     % 图 1：总行驶距离收敛对比
     figure('Name', '叉车式AGV距离收敛对比', 'Color', 'w', 'Position', [100, 100, 700, 500]);
-    plot(hist_exp.fork.dist, 'LineWidth', 1.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
+    gens = (1:length(hist_exp.fork.dist))';
+    live_plot_tbl = table( ...
+        gens, ...
+        hist_exp.fork.dist(:), hist_base.fork.dist(:), ...
+        hist_exp.fork.time(:), hist_base.fork.time(:), ...
+        hist_exp.fork.energy(:), hist_base.fork.energy(:), ...
+        'VariableNames', {'Generation', 'dist_exp', 'dist_base', 'time_exp', 'time_base', 'energy_exp', 'energy_base'});
+    plot_tbl = save_and_select_sim_plot_data('fork', live_plot_tbl, plot_data_opts);
+    plot(plot_tbl.dist_exp, 'LineWidth', 1.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
     hold on;
-    plot(hist_base.fork.dist, 'LineWidth', 1.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
+    plot(plot_tbl.dist_base, 'LineWidth', 1.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
     xlabel('迭代次数 (Generation)', 'FontSize', 12);
     ylabel('行驶总距离 (Distance / m)', 'FontSize', 12);
     grid on; 
@@ -99,9 +110,9 @@ function ga_text_scirpt_for_fork()
     
     % 图 2：最大完工时间收敛对比
     figure('Name', '叉车式AGV完工时间收敛对比', 'Color', 'w', 'Position', [150, 150, 700, 500]);
-    plot(hist_exp.fork.time, 'LineWidth', 1.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
+    plot(plot_tbl.time_exp, 'LineWidth', 1.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
     hold on;
-    plot(hist_base.fork.time, 'LineWidth', 1.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
+    plot(plot_tbl.time_base, 'LineWidth', 1.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
     xlabel('迭代次数 (Generation)', 'FontSize', 12);
     ylabel('最大完工时间 (Time / s)', 'FontSize', 12);
     grid on; 
@@ -110,9 +121,9 @@ function ga_text_scirpt_for_fork()
     
     % 图 3：物理总能耗收敛对比
     figure('Name', '叉车式AGV物理总能耗收敛对比', 'Color', 'w', 'Position', [200, 200, 700, 500]);
-    plot(hist_exp.fork.energy, 'LineWidth', 1.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
+    plot(plot_tbl.energy_exp, 'LineWidth', 1.5, 'Color', '#D95319', 'DisplayName', '实验组（改进NSGA-II算法）');
     hold on;
-    plot(hist_base.fork.energy, 'LineWidth', 1.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
+    plot(plot_tbl.energy_base, 'LineWidth', 1.5, 'Color', '#7E2F8E', 'LineStyle', '--', 'DisplayName', '对照组（标准NSGA-II算法）');
     xlabel('迭代次数 (Generation)', 'FontSize', 12);
     ylabel('系统总能耗 (Energy)', 'FontSize', 12);
     grid on; 
