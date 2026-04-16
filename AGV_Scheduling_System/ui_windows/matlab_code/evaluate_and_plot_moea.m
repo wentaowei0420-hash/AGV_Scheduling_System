@@ -38,35 +38,17 @@ function evaluate_and_plot_moea(gen_fronts_exp, gen_fronts_base)
     figure('Name', '收敛性对比分析 (Generational Distance)', 'Color', 'w', 'Position', [100, 200, 700, 500]);
     
     % 绘制对照组 (灰色，方形标记，稍细)
-    plot(gens, GD_base, '-', 'LineWidth', 1.5, 'MarkerSize', 4, 'Color', [0.6 0.6 0.6]); 
+    plot(gens, GD_base, '-', 'LineWidth', 1.5, 'MarkerSize', 4, 'Color', '#D95319'); 
     hold on;
     % 绘制实验组 (亮橙色，圆形标记，加粗突出)
-    plot(gens, GD_exp, '-', 'LineWidth', 1.5, 'MarkerSize', 4, 'Color', [0.8500 0.3250 0.0980]);
-    
-    title('算法收敛性对比 (Generational Distance)', 'FontSize', 12, 'FontWeight', 'bold');
+    plot(gens, GD_exp, '-', 'LineWidth', 1.5, 'MarkerSize', 4, 'Color', '#7E2F8E','LineStyle', '--');
     xlabel('迭代次数 (Generation)', 'FontSize', 11);
     ylabel('GD 值 ', 'FontSize', 11);
     legend('标准 NSGA-II (对照组)', '改进 NSGA-II (实验组)', 'Location', 'northeast');
     grid on;
     set(gca, 'GridLineStyle', '--', 'GridAlpha', 0.4);
     
-    % =========================================================
-    % 第 2 张图：绘制多样性对比曲线 (SP)
-    % =========================================================
-    figure('Name', '多样性对比分析 (Spacing Metric)', 'Color', 'w', 'Position', [650, 200, 700, 500]);
-    
-    % 绘制对照组 (灰色，方形标记，稍细)
-    plot(gens, SP_base, '-', 'LineWidth', 1.5, 'MarkerSize', 4, 'Color', [0.6 0.6 0.6]); 
-    hold on;
-    % 绘制实验组 (科技蓝，三角形标记，加粗突出)
-    plot(gens, SP_exp, '-', 'LineWidth', 1.5, 'MarkerSize', 4, 'Color', [0 0.4470 0.7410]);
-    
-    title('算法多样性对比 (Spacing Metric)', 'FontSize', 12, 'FontWeight', 'bold');
-    xlabel('迭代次数 (Generation)', 'FontSize', 11);
-    ylabel('SP 值', 'FontSize', 11);
-    legend('标准 NSGA-II (对照组)', '改进 NSGA-II (实验组)', 'Location', 'northeast');
-    grid on;
-    set(gca, 'GridLineStyle', '--', 'GridAlpha', 0.4);
+
 end
 
 %% ================== 以下为内部辅助函数 ==================
