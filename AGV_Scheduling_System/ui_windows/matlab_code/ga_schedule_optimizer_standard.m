@@ -133,7 +133,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     % 对照组参数设定：固定且缺乏探索性
     pc = 0.45;  % 进一步降低交叉概率，减少有效重组
     pm = 0.01; % 进一步压低变异率，加剧早熟收敛
-    clone_bias = 0.35; % 轻度复制子代，主动压缩多样性
+    clone_bias = 0.00; % 关闭显式克隆，减少重复子代
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
@@ -164,8 +164,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
+    stagnation_counter = 0;
+    last_signature = build_front_signature(pop_objs(fronts{1}, :));
     log_nsga_start('BASESTD-LIFT', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
-    log_front_summary('BASESTD-LIFT', 'init', 0, max_gen, pop_objs, fronts{1}, @select_compromise_index);
+    log_lift_front_summary('BASESTD-LIFT', 'init', 0, max_gen, pop_objs, fronts{1}, ...
+        struct('immigrants', 0, 'replaced', 0, 'stall', 0));
     
     % --- 迭代循环 ---
     for gen = 1:max_gen
@@ -212,6 +215,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             if rand < clone_bias
                 child2 = child1;
             end
+
+            child1 = diversify_child_chromosome(child1, child2, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
+            child2 = diversify_child_chromosome(child2, child1, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
             
             offspring(i,:) = child1;
             if i+1 <= pop_size, offspring(i+1,:) = child2; end
@@ -226,8 +232,20 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         end
         
         % --- 合并、排序与精英截断 ---
-        combined_pop = [pop; offspring];
-        combined_objs = [pop_objs; off_objs];
+        prev_unique_front = count_unique_front_objs(pop_objs(fronts{1}, :));
+        immigrants_count = determine_baseline_lift_immigrant_count(prev_unique_front, stagnation_counter, pop_size);
+        combined_pop=[pop; offspring];
+        combined_objs=[pop_objs; off_objs];
+        if immigrants_count > 0
+            immigrant_pop = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs);
+            immigrant_objs = zeros(immigrants_count, 3);
+            for ii = 1:immigrants_count
+                [~, obj] = eval_func(immigrant_pop(ii, :));
+                immigrant_objs(ii, :) = obj;
+            end
+            combined_pop = [combined_pop; immigrant_pop];
+            combined_objs = [combined_objs; immigrant_objs];
+        end
         
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
@@ -252,14 +270,23 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             end
             f = f + 1;
         end
+        [pop, pop_objs, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
         [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
-        [pop, pop_objs, ~] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        replaced_count = replaced_count_all + replaced_count_front;
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
         % --- 记录收敛历史 ---
         front1 = fronts{1};
         min_objs_in_front = min(pop_objs(front1, :), [], 1);
+        current_signature = build_front_signature(pop_objs(front1, :));
+        if isequal(current_signature, last_signature)
+            stagnation_counter = stagnation_counter + 1;
+        else
+            stagnation_counter = 0;
+            last_signature = current_signature;
+        end
         dist_hist(gen) = min_objs_in_front(1);
         time_hist(gen) = min_objs_in_front(2);
         energy_hist(gen) = min_objs_in_front(3);
@@ -267,10 +294,12 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
         if should_log_iteration(gen, max_gen, log_interval)
-            log_front_summary('BASESTD-LIFT', 'gen', gen, max_gen, pop_objs, front1, @select_compromise_index);
+            log_lift_front_summary('BASESTD-LIFT', 'gen', gen, max_gen, pop_objs, front1, ...
+                struct('immigrants', immigrants_count, 'replaced', replaced_count, 'stall', stagnation_counter));
         end
     end
-    log_front_summary('BASESTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts{1}, @select_compromise_index);
+    log_lift_front_summary('BASESTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts{1}, ...
+        struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
 end
 
 function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
@@ -433,8 +462,11 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
+    stagnation_counter = 0;
+    last_signature = build_front_signature(pop_objs(fronts{1}, :));
     log_nsga_start('BASESTD-FORK', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
-    log_fork_front_summary('BASESTD-FORK', 'init', 0, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs);
+    log_fork_front_summary('BASESTD-FORK', 'init', 0, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
+        struct('immigrants', 0, 'replaced', 0, 'stall', 0));
     
     % --- 3. 进化迭代循环 ---
     for gen = 1:max_gen
@@ -488,6 +520,9 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
                 % 随机改变某个任务的AGV
                 child2(num_tasks + randi(num_tasks)) = randi(num_sub_agvs);
             end
+
+            child1 = diversify_child_chromosome(child1, child2, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
+            child2 = diversify_child_chromosome(child2, child1, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
             
             offspring(i,:) = child1;
             if i + 1 <= pop_size
@@ -504,8 +539,20 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         end
         
         % --- 5. 合并与非支配排序 ---
+        prev_unique_front = count_unique_front_objs(pop_objs(fronts{1}, :));
+        immigrants_count = determine_baseline_fork_immigrant_count(prev_unique_front, stagnation_counter, pop_size);
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
+        if immigrants_count > 0
+            immigrant_pop = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs);
+            immigrant_objs = zeros(immigrants_count, 3);
+            for ii = 1:immigrants_count
+                [~, obj] = eval_func(immigrant_pop(ii, :));
+                immigrant_objs(ii, :) = obj;
+            end
+            combined_pop = [combined_pop; immigrant_pop];
+            combined_objs = [combined_objs; immigrant_objs];
+        end
         
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
@@ -533,8 +580,10 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
             f = f + 1;
         end
 
+        [pop, pop_objs, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
         [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
-        [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        replaced_count = replaced_count_all + replaced_count_front;
         
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
@@ -542,6 +591,13 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         % --- 7. 记录收敛历史 ---
         front1 = fronts{1};
         min_objs_in_front = min(pop_objs(front1, :), [], 1);
+        current_signature = build_front_signature(pop_objs(front1, :));
+        if isequal(current_signature, last_signature)
+            stagnation_counter = stagnation_counter + 1;
+        else
+            stagnation_counter = 0;
+            last_signature = current_signature;
+        end
         cost_hist_dist(gen) = min_objs_in_front(1);
         cost_hist_time(gen) = min_objs_in_front(2);
         cost_hist_energy(gen) = min_objs_in_front(3);
@@ -550,11 +606,11 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         gen_fronts_history{gen} = pop_objs(front1, :);
         if should_log_iteration(gen, max_gen, log_interval)
             log_fork_front_summary('BASESTD-FORK', 'gen', gen, max_gen, pop, pop_objs, front1, num_tasks, num_sub_agvs, ...
-                struct('immigrants', 0, 'replaced', replaced_count, 'stall', 0));
+                struct('immigrants', immigrants_count, 'replaced', replaced_count, 'stall', stagnation_counter));
         end
     end
     log_fork_front_summary('BASESTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
-        struct('immigrants', 0, 'replaced', 0, 'stall', 0));
+        struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
 end
 
 function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
@@ -850,6 +906,40 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
     [map_rows, map_cols] = size(cost_map);
 end
 
+function child = diversify_child_chromosome(child, sibling, parent1, parent2, num_tasks, num_agvs)
+    if nargin < 2
+        sibling = [];
+    end
+
+    is_duplicate = isequal(child, parent1) || isequal(child, parent2) || (~isempty(sibling) && isequal(child, sibling));
+    if ~is_duplicate
+        return;
+    end
+
+    child = force_diversify_chromosome(child, num_tasks, num_agvs);
+    if isequal(child, parent1) || isequal(child, parent2) || (~isempty(sibling) && isequal(child, sibling))
+        child = force_diversify_chromosome(child, num_tasks, num_agvs);
+    end
+end
+
+function chrom = force_diversify_chromosome(chrom, num_tasks, num_agvs)
+    if num_tasks >= 2
+        idx = randperm(num_tasks, 2);
+        tmp = chrom(idx(1));
+        chrom(idx(1)) = chrom(idx(2));
+        chrom(idx(2)) = tmp;
+    end
+
+    if num_tasks >= 4 && rand < 0.7
+        seg = sort(randperm(num_tasks, 2));
+        chrom(seg(1):seg(2)) = fliplr(chrom(seg(1):seg(2)));
+    end
+
+    assign_count = min(num_tasks, max(1, ceil(0.15 * num_tasks)));
+    assign_idx = randperm(num_tasks, assign_count);
+    chrom(num_tasks + assign_idx) = randi([1, num_agvs], 1, assign_count);
+end
+
 function [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_agvs, eval_func, max_obj_copies)
     replaced_count = 0;
     rounded_objs = quantize_moo_objectives(pop_objs);
@@ -896,12 +986,71 @@ function [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_
     end
 end
 
+function pop = generate_random_population_moo(pop_size, num_tasks, num_agvs)
+    pop = zeros(pop_size, num_tasks * 2);
+    for i = 1:pop_size
+        pop(i, 1:num_tasks) = randperm(num_tasks);
+        pop(i, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
+    end
+end
+
+function immigrants = determine_baseline_lift_immigrant_count(unique_front, stagnation_counter, pop_size)
+    immigrants = 0;
+    if unique_front <= 2
+        if stagnation_counter >= 30 && mod(stagnation_counter, 10) == 0
+            immigrants = max(immigrants, ceil(0.07 * pop_size));
+        elseif stagnation_counter >= 12 && mod(stagnation_counter, 6) == 0
+            immigrants = max(immigrants, ceil(0.05 * pop_size));
+        elseif stagnation_counter == 0
+            immigrants = max(immigrants, max(2, ceil(0.03 * pop_size)));
+        end
+    elseif unique_front <= 4
+        if stagnation_counter >= 36 && mod(stagnation_counter, 12) == 0
+            immigrants = max(immigrants, ceil(0.06 * pop_size));
+        elseif stagnation_counter >= 18 && mod(stagnation_counter, 9) == 0
+            immigrants = max(immigrants, ceil(0.04 * pop_size));
+        end
+    elseif stagnation_counter >= 45 && mod(stagnation_counter, 15) == 0
+        immigrants = max(immigrants, ceil(0.03 * pop_size));
+    end
+
+    immigrants = min(immigrants, ceil(0.10 * pop_size));
+end
+
+function immigrants = determine_baseline_fork_immigrant_count(unique_front, stagnation_counter, pop_size)
+    immigrants = 0;
+    if unique_front <= 2
+        if stagnation_counter >= 36 && mod(stagnation_counter, 12) == 0
+            immigrants = max(immigrants, ceil(0.10 * pop_size));
+        elseif stagnation_counter >= 18 && mod(stagnation_counter, 6) == 0
+            immigrants = max(immigrants, ceil(0.07 * pop_size));
+        elseif stagnation_counter == 0
+            immigrants = max(immigrants, max(2, ceil(0.04 * pop_size)));
+        end
+    elseif unique_front <= 4
+        if stagnation_counter >= 40 && mod(stagnation_counter, 10) == 0
+            immigrants = max(immigrants, ceil(0.08 * pop_size));
+        elseif stagnation_counter >= 20 && mod(stagnation_counter, 5) == 0
+            immigrants = max(immigrants, ceil(0.05 * pop_size));
+        end
+    elseif stagnation_counter >= 48 && mod(stagnation_counter, 12) == 0
+        immigrants = max(immigrants, ceil(0.04 * pop_size));
+    end
+
+    immigrants = min(immigrants, ceil(0.12 * pop_size));
+end
+
 function unique_front = count_unique_front_objs(front_objs)
     unique_front = size(unique(quantize_moo_objectives(front_objs), 'rows'), 1);
 end
 
 function rounded_objs = quantize_moo_objectives(pop_objs)
     rounded_objs = [round(pop_objs(:, 1), 0), round(pop_objs(:, 2), 1), round(pop_objs(:, 3), 3)];
+end
+
+function signature = build_front_signature(front_objs)
+    rounded_front = quantize_moo_objectives(front_objs);
+    signature = sortrows(unique(rounded_front, 'rows'), [1 2 3]);
 end
 
 function tf = should_log_iteration(gen, max_gen, log_interval)
@@ -930,6 +1079,31 @@ function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compro
             tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
             compromise(1), compromise(2), compromise(3));
     end
+end
+
+function log_lift_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, stats)
+    if nargin < 7 || isempty(stats)
+        stats = struct('immigrants', 0, 'replaced', 0, 'stall', 0);
+    end
+    front_objs = pop_objs(front_idx, :);
+    raw_front = size(front_objs, 1);
+    unique_front = count_unique_front_objs(front_objs);
+    min_objs = min(front_objs, [], 1);
+    rep_idx = select_compromise_index(front_objs);
+    compromise = front_objs(rep_idx, :);
+
+    if strcmp(phase, 'gen')
+        fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, gen, max_gen, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    else
+        fprintf('      [%s] %-5s | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    end
+
+    fprintf('      [%s] %-5s | immigrants=%d | replaced=%d | stall=%d\n', ...
+        tag, phase, stats.immigrants, stats.replaced, stats.stall);
 end
 
 function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_idx, num_tasks, num_agvs, stats)

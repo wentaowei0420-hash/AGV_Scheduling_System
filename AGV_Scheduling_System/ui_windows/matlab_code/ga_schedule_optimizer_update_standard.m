@@ -1,4 +1,4 @@
-function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update_standard(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
+ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update_standard(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
 
     oracle_options = struct();
     oracle_options.task_target_ids = unique(task_list(:, 2))';
@@ -268,6 +268,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size, eval_func);
             end
 
+            child1 = diversify_child_chromosome(child1, child2, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
+            child2 = diversify_child_chromosome(child2, child1, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
+
             % 将生成的两个子代存入 offspring 矩阵
             offspring(i, :) = child1;
             % 确保不越界（当pop_size为奇数时，最后一轮可能只有一个子代）
@@ -331,11 +334,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             f = f + 1;   % 移动到下一个前沿
         end
 
-        % --- 对新一代种群重新进行非支配排序和拥挤距离计算 ---
-        replaced_count = 0;
-        if prev_unique_front <= 4 || mod(gen, 6) == 0 || stagnation_counter >= 8
-            [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
-        end
+        % --- 对新一代种群重新进行双层去重 + 非支配排序和拥挤距离计算 ---
+        [pop, pop_objs, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
+        [pop, pop_objs, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        replaced_count = replaced_count_all + replaced_count_front;
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
 
@@ -631,7 +634,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             if rand < pm2
                 child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size, eval_func); 
             end
-            
+
+            child1 = diversify_child_chromosome(child1, child2, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
+            child2 = diversify_child_chromosome(child2, child1, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
+
             offspring(i,:) = child1;
             if i+1 <= pop_size, offspring(i+1,:) = child2; end
             i = i + 2;
@@ -679,10 +685,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             f = f + 1;
         end
         
-        replaced_count = 0;
-        if prev_unique_front <= 3 || mod(gen, 5) == 0 || stagnation_counter >= 10
-            [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
-        end
+        [pop, pop_objs, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
+        [pop, pop_objs, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        replaced_count = replaced_count_all + replaced_count_front;
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
@@ -1234,12 +1240,71 @@ function transfer_idx = choose_best_fork_transfer(chrom, num_tasks, heavy_tasks_
     end
 end
 
+function child = diversify_child_chromosome(child, sibling, parent1, parent2, num_tasks, num_agvs)
+    if nargin < 2
+        sibling = [];
+    end
+
+    is_duplicate = isequal(child, parent1) || isequal(child, parent2) || (~isempty(sibling) && isequal(child, sibling));
+    if ~is_duplicate
+        return;
+    end
+
+    child = force_diversify_chromosome(child, num_tasks, num_agvs);
+    if isequal(child, parent1) || isequal(child, parent2) || (~isempty(sibling) && isequal(child, sibling))
+        child = force_diversify_chromosome(child, num_tasks, num_agvs);
+    end
+end
+
+function chrom = force_diversify_chromosome(chrom, num_tasks, num_agvs)
+    if num_tasks >= 2
+        idx = randperm(num_tasks, 2);
+        tmp = chrom(idx(1));
+        chrom(idx(1)) = chrom(idx(2));
+        chrom(idx(2)) = tmp;
+    end
+
+    if num_tasks >= 4 && rand < 0.7
+        seg = sort(randperm(num_tasks, 2));
+        chrom(seg(1):seg(2)) = fliplr(chrom(seg(1):seg(2)));
+    end
+
+    assign_count = min(num_tasks, max(1, ceil(0.15 * num_tasks)));
+    assign_idx = randperm(num_tasks, assign_count);
+    chrom(num_tasks + assign_idx) = randi([1, num_agvs], 1, assign_count);
+end
+
 function [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_agvs, eval_func, max_obj_copies)
     replaced_count = 0;
     rounded_objs = quantize_moo_objectives(pop_objs);
     [~, ~, obj_group] = unique(rounded_objs, 'rows', 'stable');
     for group_id = 1:max(obj_group)
         members = find(obj_group == group_id);
+        if numel(members) <= max_obj_copies
+            continue;
+        end
+        overflow = members(max_obj_copies + 1:end);
+        for k = 1:numel(overflow)
+            idx = overflow(k);
+            pop(idx, 1:num_tasks) = randperm(num_tasks);
+            pop(idx, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
+            [~, obj] = eval_func(pop(idx, :));
+            pop_objs(idx, :) = obj;
+            replaced_count = replaced_count + 1;
+        end
+    end
+end
+
+function [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_objs, front_idx, num_tasks, num_agvs, eval_func, max_obj_copies)
+    replaced_count = 0;
+    if isempty(front_idx)
+        return;
+    end
+
+    rounded_front = quantize_moo_objectives(pop_objs(front_idx, :));
+    [~, ~, obj_group] = unique(rounded_front, 'rows', 'stable');
+    for group_id = 1:max(obj_group)
+        members = front_idx(obj_group == group_id);
         if numel(members) <= max_obj_copies
             continue;
         end
