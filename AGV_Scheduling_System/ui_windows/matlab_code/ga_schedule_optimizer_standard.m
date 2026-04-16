@@ -131,8 +131,9 @@ end
 % 【修改】：在返回值中增加 gen_fronts_history
 function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fronts_history] = run_sub_nsga2_lift_baseline(tasks, num_sub_agvs, ga_params, eval_func)
     % 对照组参数设定：固定且缺乏探索性
-    pc = 0.6;  % 降低交叉概率，减少优良基因组合机会
-    pm = 0.02; % 极低的变异率，使其几乎无法跳出局部最优
+    pc = 0.45;  % 进一步降低交叉概率，减少有效重组
+    pm = 0.01; % 进一步压低变异率，加剧早熟收敛
+    clone_bias = 0.35; % 轻度复制子代，主动压缩多样性
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
@@ -144,6 +145,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     
     % 【新增】：为每一代的帕累托前沿预分配内存
     gen_fronts_history = cell(1, max_gen); 
+    log_interval = max(1, ceil(max_gen / 20));
     
     % --- 初始化种群 ---
     pop = zeros(pop_size, num_tasks * 2);
@@ -161,6 +163,8 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
+    log_nsga_start('BASESTD-LIFT', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
+    log_front_summary('BASESTD-LIFT', 'init', 0, max_gen, pop_objs, fronts{1}, @select_compromise_index);
     
     % --- 迭代循环 ---
     for gen = 1:max_gen
@@ -203,6 +207,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 idx = randperm(num_tasks, 2);
                 tmp = child2(idx(1)); child2(idx(1)) = child2(idx(2)); child2(idx(2)) = tmp;
                 child2(num_tasks + randi(num_tasks)) = randi(num_sub_agvs);
+            end
+            if rand < clone_bias
+                child2 = child1;
             end
             
             offspring(i,:) = child1;
@@ -256,7 +263,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
+        if should_log_iteration(gen, max_gen, log_interval)
+            log_front_summary('BASESTD-LIFT', 'gen', gen, max_gen, pop_objs, front1, @select_compromise_index);
+        end
     end
+    log_front_summary('BASESTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts{1}, @select_compromise_index);
 end
 
 function [schedules, objectives, batch_info] = cost_func_lift_moo_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
@@ -390,8 +401,9 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
     
-    pc = 0.8; 
-    pm = 0.05; 
+    pc = 0.58; 
+    pm = 0.02; 
+    clone_bias = 0.30; % 轻度复制子代，降低前沿丰富度
     
     cost_hist_dist = zeros(1, max_gen);
     cost_hist_time = zeros(1, max_gen);
@@ -399,6 +411,7 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     
     % 【新增】：为每一代的帕累托前沿预分配内存
     gen_fronts_history = cell(1, max_gen); 
+    log_interval = max(1, ceil(max_gen / 20));
     
     % --- 1. 初始化种群 ---
     pop = zeros(pop_size, num_tasks * 2);
@@ -416,6 +429,8 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
+    log_nsga_start('BASESTD-FORK', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
+    log_fork_front_summary('BASESTD-FORK', 'init', 0, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs);
     
     % --- 3. 进化迭代循环 ---
     for gen = 1:max_gen
@@ -526,7 +541,11 @@ function [pop, pop_objs, fronts, cd, cost_hist_dist, cost_hist_time, cost_hist_e
         
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
+        if should_log_iteration(gen, max_gen, log_interval)
+            log_fork_front_summary('BASESTD-FORK', 'gen', gen, max_gen, pop, pop_objs, front1, num_tasks, num_sub_agvs);
+        end
     end
+    log_fork_front_summary('BASESTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs);
 end
 
 function [schedules, objectives] = cost_func_fork_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
@@ -820,4 +839,61 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
     end
 
     [map_rows, map_cols] = size(cost_map);
+end
+
+function tf = should_log_iteration(gen, max_gen, log_interval)
+    tf = (gen == 1) || (gen == max_gen) || (mod(gen, log_interval) == 0);
+end
+
+function log_nsga_start(tag, num_tasks, num_agvs, pop_size, max_gen, log_interval)
+    fprintf('      [%s] start | tasks=%d | agvs=%d | pop=%d | gen=%d | logInterval=%d\n', ...
+        tag, num_tasks, num_agvs, pop_size, max_gen, log_interval);
+end
+
+function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compromise_selector)
+    front_objs = pop_objs(front_idx, :);
+    raw_front = size(front_objs, 1);
+    unique_front = size(unique(front_objs, 'rows'), 1);
+    min_objs = min(front_objs, [], 1);
+    rep_idx = compromise_selector(front_objs);
+    compromise = front_objs(rep_idx, :);
+
+    if strcmp(phase, 'gen')
+        fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, gen, max_gen, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    else
+        fprintf('      [%s] %-5s | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    end
+end
+
+function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_idx, num_tasks, num_agvs)
+    front_objs = pop_objs(front_idx, :);
+    front_pop = pop(front_idx, :);
+    raw_front = size(front_objs, 1);
+    unique_front = size(unique(front_objs, 'rows'), 1);
+    min_objs = min(front_objs, [], 1);
+
+    rep_idx = select_compromise_index(front_objs);
+    compromise = front_objs(rep_idx, :);
+    compromise_load = histcounts(front_pop(rep_idx, num_tasks+1:end), 1:num_agvs+1);
+
+    [~, best_time_idx] = min(front_objs(:, 2));
+    best_time = front_objs(best_time_idx, :);
+    best_time_load = histcounts(front_pop(best_time_idx, num_tasks+1:end), 1:num_agvs+1);
+
+    if strcmp(phase, 'gen')
+        fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, gen, max_gen, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    else
+        fprintf('      [%s] %-5s | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    end
+
+    fprintf('      [%s] %-5s | compromiseLoad=%s | bestTime=[%.1f %.1f %.3f] | bestTimeLoad=%s\n', ...
+        tag, phase, mat2str(compromise_load), best_time(1), best_time(2), best_time(3), mat2str(best_time_load));
 end

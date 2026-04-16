@@ -70,7 +70,8 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
         front1_idx = fronts_fork{1}; 
         front1_objs = objs_fork(front1_idx, :);
         
-        best_idx_in_front1 = select_compromise_index(front1_objs);      
+        best_idx_in_front1 = select_fork_compromise_index( ...
+            front1_objs, pop_fork(front1_idx, :), size(tasks_fork, 1), length(agvs_fork));      
         best_fork_chrom = pop_fork(front1_idx(best_idx_in_front1), :);
         
         [sched_fork, best_objs_fork] = eval_fork_moo(best_fork_chrom);
@@ -149,7 +150,8 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     pm_max = 0.2; pm_min = 0.05;
 
     % 预分配内存，用于存储每一代第一前沿的所有个体的目标值，提升运行速度
-    gen_fronts_history = cell(1, max_gen);
+    gen_fronts_history = cell(1, max_gen); 
+    log_interval = max(1, ceil(max_gen / 20));
 
     %% 1.1 - 初始化种群
     % 种群矩阵 pop：大小为 pop_size × (2*num_tasks)
@@ -177,6 +179,8 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     %   fronts - 元胞数组，每个元素包含属于同一前沿的个体索引
     %   rank   - 每个个体所属的前沿编号（1为最优前沿，数值越小越优）
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
+    log_nsga_start('EXPSTD-LIFT', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
+    log_front_summary('EXPSTD-LIFT', 'init', 0, max_gen, pop_objs, fronts{1}, @select_compromise_index);
     % 计算每个个体的拥挤距离（基于目标空间），用于维持种群多样性
     cd = calc_crowding_distance(pop_objs, fronts);
 
@@ -220,10 +224,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             % 如果较优父代的rank不差于平均rank（即rank值 <= 平均rank），说明个体质量较好，
             % 此时交叉概率随rank值线性变化：rank越低（越好），交叉率越高（从pc_min到pc_max）
             if better_rank <= avg_rank
-                pc = pc_min + (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
+                pc = pc_max - (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
             else
                 % 如果较优父代的rank比平均rank差，则使用最大交叉率，以增强探索
-                pc = pc_max;
+                pc = pc_min;
             end
 
             % --- 自适应变异概率（分别对两个父代）---
@@ -240,6 +244,16 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 pm2 = pm_max;
             end
 
+            if stagnation_counter >= 12
+                pc = max(pc_min, pc - 0.08);
+                pm1 = min(0.18, pm1 + 0.05);
+                pm2 = min(0.18, pm2 + 0.05);
+            elseif stagnation_counter >= 6
+                pc = max(pc_min, pc - 0.04);
+                pm1 = min(0.16, pm1 + 0.025);
+                pm2 = min(0.16, pm2 + 0.025);
+            end
+
             % --- 交叉操作 ---
             % 如果随机数小于当前交叉概率pc，则对两个父代进行 IPOX-MPX 交叉（一种针对任务排序和分配的特殊交叉）
             if rand < pc
@@ -251,11 +265,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             % 对第一个子代：如果随机数小于变异率pm1，则执行 fork-CPO 变异（一种结合任务顺序和AGV分配的变异）
             % 变异函数传入参数：子代个体、任务数、AGV数、变异率、当前代数、最大代数、父代的moo排名、种群大小
             if rand < pm1
-                child1 = mutate_fork_cpo(child1, num_tasks, num_sub_agvs, pm1, gen, max_gen, moo_ranks(p1_idx), pop_size);
+                child1 = mutate_fork_cpo(child1, num_tasks, num_sub_agvs, pm1, gen, max_gen, moo_ranks(p1_idx), pop_size, eval_func);
             end
             % 对第二个子代同样操作
             if rand < pm2
-                child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size);
+                child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size, eval_func);
             end
 
             % 将生成的两个子代存入 offspring 矩阵
@@ -329,7 +343,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
 
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N × 3 矩阵)，用于后续分析或绘图
         gen_fronts_history{gen} = pop_objs(front1, :);
+        if should_log_iteration(gen, max_gen, log_interval)
+            log_front_summary('EXPSTD-LIFT', 'gen', gen, max_gen, pop_objs, front1, @select_compromise_index);
+        end
     end
+    log_front_summary('EXPSTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts{1}, @select_compromise_index);
     % 主循环结束
 
 % 函数结束
@@ -518,10 +536,14 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
     time_hist = zeros(1, max_gen); 
     energy_hist = zeros(1, max_gen); 
     
-    pc_max = 0.7; pc_min = 0.4;  
-    pm_max = 0.15; pm_min = 0.05; 
+    pc_max = 0.78; pc_min = 0.42;  
+    pm_max = 0.12; pm_min = 0.035; 
+    max_obj_copies = 1;
+    stagnation_counter = 0;
+    last_signature = [];
     % 【新增】：预分配内存，提升运行速度
     gen_fronts_history = cell(1, max_gen);
+    log_interval = max(1, ceil(max_gen / 20));
     %% 初始化种群
     pop = zeros(pop_size, num_tasks * 2);
     for i = 1:pop_size
@@ -538,6 +560,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
     
     [fronts, rank] = fast_non_dominated_sorting(pop_objs);
     cd = calc_crowding_distance(pop_objs, fronts);
+    last_signature = min(pop_objs(fronts{1}, :), [], 1);
+    log_nsga_start('EXPSTD-FORK', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
+    log_fork_front_summary('EXPSTD-FORK', 'init', 0, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
+        struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
     
     for gen = 1:max_gen
         offspring = zeros(pop_size, num_tasks * 2);
@@ -561,9 +587,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             
             % 自适应概率
             if better_rank <= avg_rank
-                pc = pc_min + (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
+                pc = pc_max - (pc_max - pc_min) * (better_rank - min_rank) / (avg_rank - min_rank + 1e-6);
             else
-                pc = pc_max;
+                pc = pc_min;
             end
             if rank_p1 <= avg_rank
                 pm1 = pm_min + (pm_max - pm_min) * (rank_p1 - min_rank) / (avg_rank - min_rank + 1e-6);
@@ -583,10 +609,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             
             % 变异 (调用 CPO 算子，使用多目标排序而非单距离排序)
             if rand < pm1
-                child1 = mutate_fork_cpo(child1, num_tasks, num_sub_agvs, pm1, gen, max_gen, moo_ranks(p1_idx), pop_size); 
+                child1 = mutate_fork_cpo(child1, num_tasks, num_sub_agvs, pm1, gen, max_gen, moo_ranks(p1_idx), pop_size, eval_func); 
             end
             if rand < pm2
-                child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size); 
+                child2 = mutate_fork_cpo(child2, num_tasks, num_sub_agvs, pm2, gen, max_gen, moo_ranks(p2_idx), pop_size, eval_func); 
             end
             
             offspring(i,:) = child1;
@@ -604,6 +630,13 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         % 合并与非支配排序
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
+        prev_unique_front = count_unique_front_objs(pop_objs(fronts{1}, :));
+        immigrants_count = determine_fork_immigrant_count(prev_unique_front, stagnation_counter, pop_size);
+        if immigrants_count > 0
+            [immigrant_pop, immigrant_objs] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, eval_func);
+            combined_pop = [combined_pop; immigrant_pop];
+            combined_objs = [combined_objs; immigrant_objs];
+        end
         [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
         
@@ -629,6 +662,10 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             f = f + 1;
         end
         
+        replaced_count = 0;
+        if prev_unique_front <= 3 || mod(gen, 5) == 0 || stagnation_counter >= 10
+            [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        end
         [fronts, rank] = fast_non_dominated_sorting(pop_objs);
         cd = calc_crowding_distance(pop_objs, fronts);
         
@@ -642,7 +679,19 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         energy_hist(gen) = min_objs_in_front(3);
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
+        if all(abs(min_objs_in_front - last_signature) <= 1e-9)
+            stagnation_counter = stagnation_counter + 1;
+        else
+            stagnation_counter = 0;
+            last_signature = min_objs_in_front;
+        end
+        if should_log_iteration(gen, max_gen, log_interval)
+            log_fork_front_summary('EXPSTD-FORK', 'gen', gen, max_gen, pop, pop_objs, front1, num_tasks, num_sub_agvs, ...
+                struct('immigrants', immigrants_count, 'replaced', replaced_count, 'stall', stagnation_counter));
+        end
     end
+    log_fork_front_summary('EXPSTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
+        struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
 end
 
 %% 公共函数
@@ -915,7 +964,7 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
     [map_rows, map_cols] = size(cost_map);
 end
 
-function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_rank_idx, PN)
+function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_rank_idx, PN, eval_func)
 % =========================================================================
 % 函数功能：多策略自适应变异算子（Fork-CPO变异，结合了探索与开发策略）
 % 输入参数：
@@ -1020,9 +1069,9 @@ function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_ra
             % 找出负载最大的AGV所承担的所有任务的位置索引
             heavy_tasks_idx = find(current_agvs == max_agv);
 
-            if ~isempty(heavy_tasks_idx)
-                % 随机选择一个任务，将其指派给负载最小的AGV
-                transfer_idx = heavy_tasks_idx(randi(length(heavy_tasks_idx)));
+            if (counts(max_agv) - counts(min_agv)) >= 2 && ~isempty(heavy_tasks_idx)
+                % 优先转移重载车序列靠后的任务，直接压低瓶颈车完工时间
+                transfer_idx = choose_best_fork_transfer(child, num_tasks, heavy_tasks_idx, min_agv, eval_func);
                 child(num_tasks + transfer_idx) = min_agv;
             end
             % 注意：此处仅改变AGV指派，不改变任务执行顺序，以保护精英个体的优良路径结构
@@ -1040,14 +1089,15 @@ function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_ra
         for k = 1:num_agvs
             counts(k) = sum(current_agvs == k);
         end
-        min_val = min(counts);                   % 最小负载值
-        candidates = find(counts == min_val);    % 所有具有最小负载的AGV编号
-
-        % 随机选择两个不同的任务位置（强制修改它们的AGV指派）
-        mutate_pos = randperm(num_tasks, 2);
-        for p = 1:2
-            % 将这两个任务随机指派给某个负载最小的AGV（随机从candidates中选）
-            child(num_tasks + mutate_pos(p)) = candidates(randi(length(candidates)));
+        [max_val, max_agv] = max(counts);
+        [min_val, min_agv] = min(counts);
+        if (max_val - min_val) >= 2
+            heavy_tasks_idx = find(current_agvs == max_agv);
+            if ~isempty(heavy_tasks_idx)
+                % 末尾任务通常更接近拖慢当前瓶颈车，优先将其迁移
+                transfer_idx = choose_best_fork_transfer(child, num_tasks, heavy_tasks_idx, min_agv, eval_func);
+                child(num_tasks + transfer_idx) = min_agv;
+            end
         end
     end
 end
@@ -1100,4 +1150,204 @@ function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
     child2 = [c2_seq, c2_agv];
 end
 
+function idx = select_fork_compromise_index(front_objs, front_pop, num_tasks, num_agvs)
+    if isempty(front_objs)
+        idx = 1;
+        return;
+    end
 
+    % 对时间目标给予更高权重，避免只为少量距离/能耗收益牺牲大量完工时间
+    min_objs = min(front_objs, [], 1);
+    max_objs = max(front_objs, [], 1);
+    obj_norm = (front_objs - min_objs) ./ (max_objs - min_objs + 1e-9);
+    obj_weights = [0.28, 0.50, 0.22];
+    ideal_best = min(obj_norm, [], 1);
+    ideal_worst = max(obj_norm, [], 1);
+    d_best = sqrt(sum(((obj_norm - ideal_best) .* obj_weights).^2, 2));
+    d_worst = sqrt(sum(((obj_norm - ideal_worst) .* obj_weights).^2, 2));
+    closeness = d_worst ./ (d_best + d_worst + 1e-9);
+
+    if nargin < 4 || isempty(front_pop)
+        [~, idx] = max(closeness);
+        return;
+    end
+
+    % 在折中度相近时，额外偏好任务分配更均衡的解
+    assign_mat = front_pop(:, num_tasks+1:end);
+    count_span = zeros(size(assign_mat, 1), 1);
+    count_std = zeros(size(assign_mat, 1), 1);
+    for i = 1:size(assign_mat, 1)
+        counts = histcounts(assign_mat(i, :), 1:num_agvs+1);
+        count_span(i) = max(counts) - min(counts);
+        count_std(i) = std(counts);
+    end
+
+    if max(count_span) > min(count_span)
+        span_norm = (count_span - min(count_span)) ./ (max(count_span) - min(count_span));
+    else
+        span_norm = zeros(size(count_span));
+    end
+
+    if max(count_std) > min(count_std)
+        std_norm = (count_std - min(count_std)) ./ (max(count_std) - min(count_std));
+    else
+        std_norm = zeros(size(count_std));
+    end
+
+    balance_score = 1 - 0.7 * span_norm - 0.3 * std_norm;
+    combined_score = 0.985 * closeness + 0.015 * balance_score;
+    [~, idx] = max(combined_score);
+end
+
+function transfer_idx = choose_best_fork_transfer(chrom, num_tasks, heavy_tasks_idx, target_agv, eval_func)
+    candidate_positions = heavy_tasks_idx(max(1, end - min(2, length(heavy_tasks_idx) - 1)):end);
+    transfer_idx = candidate_positions(end);
+    best_score = [inf, inf, inf];
+
+    for i = 1:length(candidate_positions)
+        trial = chrom;
+        trial_idx = candidate_positions(i);
+        trial(num_tasks + trial_idx) = target_agv;
+        [~, trial_obj] = eval_func(trial);
+        trial_score = [trial_obj(2), trial_obj(1), trial_obj(3)];
+        if lexicographic_less(trial_score, best_score)
+            best_score = trial_score;
+            transfer_idx = trial_idx;
+        end
+    end
+end
+
+function [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_agvs, eval_func, max_obj_copies)
+    replaced_count = 0;
+    rounded_objs = quantize_moo_objectives(pop_objs);
+    [~, ~, obj_group] = unique(rounded_objs, 'rows', 'stable');
+    for group_id = 1:max(obj_group)
+        members = find(obj_group == group_id);
+        if numel(members) <= max_obj_copies
+            continue;
+        end
+        overflow = members(max_obj_copies + 1:end);
+        for k = 1:numel(overflow)
+            idx = overflow(k);
+            pop(idx, 1:num_tasks) = randperm(num_tasks);
+            pop(idx, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
+            [~, obj] = eval_func(pop(idx, :));
+            pop_objs(idx, :) = obj;
+            replaced_count = replaced_count + 1;
+        end
+    end
+end
+
+function [rand_pop, rand_objs] = generate_random_population_moo(count, num_tasks, num_agvs, eval_func)
+    rand_pop = zeros(count, num_tasks * 2);
+    rand_objs = zeros(count, 3);
+    for i = 1:count
+        rand_pop(i, 1:num_tasks) = randperm(num_tasks);
+        rand_pop(i, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
+        [~, obj] = eval_func(rand_pop(i, :));
+        rand_objs(i, :) = obj;
+    end
+end
+
+function immigrants_count = determine_fork_immigrant_count(unique_front, stagnation_counter, pop_size)
+    immigrants_count = 0;
+    if unique_front <= 2
+        immigrants_count = max(6, ceil(0.08 * pop_size));
+    elseif unique_front <= 4
+        immigrants_count = max(3, ceil(0.04 * pop_size));
+    end
+
+    if stagnation_counter >= 12
+        immigrants_count = max(immigrants_count, ceil(0.10 * pop_size));
+    elseif stagnation_counter >= 6
+        immigrants_count = max(immigrants_count, ceil(0.06 * pop_size));
+    end
+
+    if stagnation_counter > 0 && mod(stagnation_counter, 3) ~= 0
+        immigrants_count = min(immigrants_count, 2);
+    elseif stagnation_counter >= 4
+        immigrants_count = max(immigrants_count, ceil(0.04 * pop_size));
+    end
+end
+
+function unique_front = count_unique_front_objs(front_objs)
+    unique_front = size(unique(quantize_moo_objectives(front_objs), 'rows'), 1);
+end
+
+function rounded_objs = quantize_moo_objectives(pop_objs)
+    rounded_objs = [round(pop_objs(:, 1), 0), round(pop_objs(:, 2), 1), round(pop_objs(:, 3), 3)];
+end
+
+function tf = lexicographic_less(a, b)
+    tf = false;
+    for i = 1:numel(a)
+        if a(i) < b(i) - 1e-9
+            tf = true;
+            return;
+        elseif a(i) > b(i) + 1e-9
+            return;
+        end
+    end
+end
+
+function tf = should_log_iteration(gen, max_gen, log_interval)
+    tf = (gen == 1) || (gen == max_gen) || (mod(gen, log_interval) == 0);
+end
+
+function log_nsga_start(tag, num_tasks, num_agvs, pop_size, max_gen, log_interval)
+    fprintf('      [%s] start | tasks=%d | agvs=%d | pop=%d | gen=%d | logInterval=%d\n', ...
+        tag, num_tasks, num_agvs, pop_size, max_gen, log_interval);
+end
+
+function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compromise_selector)
+    front_objs = pop_objs(front_idx, :);
+    raw_front = size(front_objs, 1);
+    unique_front = size(unique(front_objs, 'rows'), 1);
+    min_objs = min(front_objs, [], 1);
+    rep_idx = compromise_selector(front_objs);
+    compromise = front_objs(rep_idx, :);
+
+    if strcmp(phase, 'gen')
+        fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, gen, max_gen, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    else
+        fprintf('      [%s] %-5s | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    end
+end
+
+function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_idx, num_tasks, num_agvs, stats)
+    if nargin < 10 || isempty(stats)
+        stats = struct('immigrants', 0, 'replaced', 0, 'stall', 0);
+    end
+    front_objs = pop_objs(front_idx, :);
+    front_pop = pop(front_idx, :);
+    raw_front = size(front_objs, 1);
+    unique_front = size(unique(front_objs, 'rows'), 1);
+    min_objs = min(front_objs, [], 1);
+
+    rep_idx = select_fork_compromise_index(front_objs, front_pop, num_tasks, num_agvs);
+    compromise = front_objs(rep_idx, :);
+    compromise_load = histcounts(front_pop(rep_idx, num_tasks+1:end), 1:num_agvs+1);
+
+    [~, best_time_idx] = min(front_objs(:, 2));
+    best_time = front_objs(best_time_idx, :);
+    best_time_load = histcounts(front_pop(best_time_idx, num_tasks+1:end), 1:num_agvs+1);
+
+    if strcmp(phase, 'gen')
+        fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, gen, max_gen, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    else
+        fprintf('      [%s] %-5s | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
+            tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
+            compromise(1), compromise(2), compromise(3));
+    end
+
+    fprintf('      [%s] %-5s | compromiseLoad=%s | bestTime=[%.1f %.1f %.3f] | bestTimeLoad=%s\n', ...
+        tag, phase, mat2str(compromise_load), best_time(1), best_time(2), best_time(3), mat2str(best_time_load));
+    fprintf('      [%s] %-5s | immigrants=%d | replaced=%d | stall=%d\n', ...
+        tag, phase, stats.immigrants, stats.replaced, stats.stall);
+end

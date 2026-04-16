@@ -60,7 +60,7 @@ function ga_text_scirpt_for_fork()
     disp('   [执行] 对照组（标准 NSGA-II / SGA Baseline）...');
     base_timer = tic;
     [sched_base, batch_base, metrics_base, hist_base, pareto_baseline] = ...
-        ga_schedule_optimizer(task_list, num_agvs, depots, agv_params, ga_params, agv_types);
+        ga_schedule_optimizer_standard(task_list, num_agvs, depots, agv_params, ga_params, agv_types);
     base_elapsed = toc(base_timer);
     fprintf('   [完成] 对照组运行时间: %.3f s\n', base_elapsed);
 
