@@ -42,16 +42,19 @@
         
         front1_idx = fronts_lift{1}; 
         front1_objs = objs_lift(front1_idx, :);
-        min_front1_lift_objs = min(front1_objs, [], 1);
+        front1_violation = zeros(numel(front1_idx), 1);
+        for ii = 1:numel(front1_idx)
+            [~, ~, ~, front1_violation(ii)] = eval_lift_moo(pop_lift(front1_idx(ii), :));
+        end
         
         % TOPSIS 妥协决策机制
-        best_idx_in_front1 = select_compromise_index(front1_objs);
+        best_idx_in_front1 = select_feasible_compromise_index(front1_objs, front1_violation, @select_compromise_index);
         best_lift_chrom = pop_lift(front1_idx(best_idx_in_front1), :);
         
-        [sched_lift, ~, batch_info_lift] = eval_lift_moo(best_lift_chrom);
-        dist_lift = min_front1_lift_objs(1);          
-        time_lift = min_front1_lift_objs(2);          
-        energy_lift = min_front1_lift_objs(3);        
+        [sched_lift, best_objs_lift, batch_info_lift] = eval_lift_moo(best_lift_chrom);
+        dist_lift = best_objs_lift(1);          
+        time_lift = best_objs_lift(2);          
+        energy_lift = best_objs_lift(3);        
         
         for i = 1:length(agvs_lift)
             best_schedule{agvs_lift(i)} = sched_lift{i};
@@ -70,9 +73,23 @@
         % TOPSIS 妥协决策机制
         front1_idx = fronts_fork{1}; 
         front1_objs = objs_fork(front1_idx, :);
+        front1_violation = zeros(numel(front1_idx), 1);
+        for ii = 1:numel(front1_idx)
+            [~, ~, front1_violation(ii)] = eval_fork_moo(pop_fork(front1_idx(ii), :));
+        end
         
-        best_idx_in_front1 = select_fork_compromise_index( ...
-            front1_objs, pop_fork(front1_idx, :), size(tasks_fork, 1), length(agvs_fork));      
+        feasible_idx = find(isfinite(front1_violation) & front1_violation <= 1e-9);
+        if ~isempty(feasible_idx)
+            local_idx = select_fork_compromise_index( ...
+                front1_objs(feasible_idx, :), pop_fork(front1_idx(feasible_idx), :), size(tasks_fork, 1), length(agvs_fork));
+            best_idx_in_front1 = feasible_idx(local_idx);
+        else
+            min_violation = min(front1_violation);
+            candidate_idx = find(abs(front1_violation - min_violation) <= 1e-9);
+            local_idx = select_fork_compromise_index( ...
+                front1_objs(candidate_idx, :), pop_fork(front1_idx(candidate_idx), :), size(tasks_fork, 1), length(agvs_fork));
+            best_idx_in_front1 = candidate_idx(local_idx);
+        end
         best_fork_chrom = pop_fork(front1_idx(best_idx_in_front1), :);
         
         [sched_fork, best_objs_fork] = eval_fork_moo(best_fork_chrom);
@@ -152,7 +169,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
 
     % 预分配内存，用于存储每一代第一前沿的所有个体的目标值，提升运行速度
     gen_fronts_history = cell(1, max_gen); 
-    max_obj_copies = 1;
+    max_obj_copies = 2;
     stagnation_counter = 0;
     last_signature = [];
     log_interval = max(1, ceil(max_gen / 20));
@@ -173,19 +190,21 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     %% 1.2 - 初始化评估（计算初始种群的目标值）
     % pop_objs：种群中每个个体的三个目标值（距离、时间、能量），大小为 pop_size × 3
     pop_objs = zeros(pop_size, 3);
+    pop_violation = zeros(pop_size, 1);
     for i = 1:pop_size
         % 调用外部评估函数 eval_func，传入个体编码，得到该个体的目标值obj
-        [~, obj] = eval_func(pop(i,:));
+        [~, obj, ~, violation] = eval_func(pop(i,:));
+        pop_violation(i) = violation;
         pop_objs(i,:) = obj;   % 存储三个目标值
     end
 
     % 对初始种群进行快速非支配排序，返回：
     %   fronts - 元胞数组，每个元素包含属于同一前沿的个体索引
     %   rank   - 每个个体所属的前沿编号（1为最优前沿，数值越小越优）
-    [fronts, rank] = fast_non_dominated_sorting(pop_objs);
-    last_signature = quantize_moo_objectives(min(pop_objs(fronts{1}, :), [], 1));
+    [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation);
+    last_signature = build_front_signature(pop_objs(fronts{1}, :));
     log_nsga_start('EXPSTD-LIFT', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
-    log_lift_front_summary('EXPSTD-LIFT', 'init', 0, max_gen, pop_objs, fronts{1}, ...
+    log_lift_front_summary('EXPSTD-LIFT', 'init', 0, max_gen, pop_objs, fronts, fronts{1}, ...
         struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
     % 计算每个个体的拥挤距离（基于目标空间），用于维持种群多样性
     cd = calc_crowding_distance(pop_objs, fronts);
@@ -213,9 +232,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         i = 1;   % 子代计数索引
         while i <= pop_size
             % 通过锦标赛选择（基于rank和cd）选出第一个父代索引
-            p1_idx = tournament_select_nsga2(rank, cd);
+            p1_idx = tournament_select_nsga2(rank, cd, pop_violation);
             % 选出第二个父代索引
-            p2_idx = tournament_select_nsga2(rank, cd);
+            p2_idx = tournament_select_nsga2(rank, cd, pop_violation);
             % 初始子代设为父代个体的副本（后续根据交叉变异决定是否修改）
             child1 = pop(p1_idx, :);
             child2 = pop(p2_idx, :);
@@ -283,24 +302,28 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
 
         % --- 评估子代种群的目标值 ---
         off_objs = zeros(pop_size, 3);
+        off_violation = zeros(pop_size, 1);
         for i = 1:pop_size
-            [~, obj] = eval_func(offspring(i,:));
+            [~, obj, ~, violation] = eval_func(offspring(i,:));
             off_objs(i,:) = obj;
+            off_violation(i) = violation;
         end
 
         % --- 合并父代与子代，形成大小为 2*pop_size 的临时种群 ---
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
+        combined_violation = [pop_violation; off_violation];
         prev_unique_front = count_unique_front_objs(pop_objs(fronts{1}, :));
         immigrants_count = determine_lift_immigrant_count(prev_unique_front, stagnation_counter, pop_size);
         if immigrants_count > 0
-            [immigrant_pop, immigrant_objs] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, eval_func);
+            [immigrant_pop, immigrant_objs, immigrant_violation] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, eval_func);
             combined_pop = [combined_pop; immigrant_pop];
             combined_objs = [combined_objs; immigrant_objs];
+            combined_violation = [combined_violation; immigrant_violation];
         end
 
         % 对合并后的种群进行快速非支配排序
-        [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
+        [c_fronts, ~] = fast_non_dominated_sorting(combined_objs, combined_violation);
         % 计算合并种群的拥挤距离
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
 
@@ -308,6 +331,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         % 清空 pop 和 pop_objs 以重新填充
         pop = zeros(pop_size, num_tasks * 2);
         pop_objs = zeros(pop_size, 3);
+        pop_violation = zeros(pop_size, 1);
         current_idx = 1;      % 当前已选择的个体数量指针
         f = 1;                 % 前沿索引
 
@@ -319,6 +343,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 % 将该前沿的所有个体直接加入
                 pop(current_idx : current_idx + length(front) - 1, :) = combined_pop(front, :);
                 pop_objs(current_idx : current_idx + length(front) - 1, :) = combined_objs(front, :);
+                pop_violation(current_idx : current_idx + length(front) - 1, :) = combined_violation(front, :);
                 current_idx = current_idx + length(front);
             else
                 % 如果当前前沿只能部分加入，则根据拥挤距离降序排序，选择距离最大的个体填充剩余位置
@@ -329,17 +354,18 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
                 % 将选中的个体放入新种群
                 pop(current_idx : end, :) = combined_pop(selected_front, :);
                 pop_objs(current_idx : end, :) = combined_objs(selected_front, :);
+                pop_violation(current_idx : end, :) = combined_violation(selected_front, :);
                 break;   % 已填满，退出循环
             end
             f = f + 1;   % 移动到下一个前沿
         end
 
         % --- 对新一代种群重新进行双层去重 + 非支配排序和拥挤距离计算 ---
-        [pop, pop_objs, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
-        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
-        [pop, pop_objs, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, pop_violation, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs, pop_violation);
+        [pop, pop_objs, pop_violation, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
         replaced_count = replaced_count_all + replaced_count_front;
-        [fronts, rank] = fast_non_dominated_sorting(pop_objs);
+        [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation);
         cd = calc_crowding_distance(pop_objs, fronts);
 
         % --- 记录本代第一前沿（Pareto最优前沿）的三个目标的最小值 ---
@@ -353,7 +379,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
 
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N × 3 矩阵)，用于后续分析或绘图
         gen_fronts_history{gen} = pop_objs(front1, :);
-        current_signature = quantize_moo_objectives(min_objs_in_front);
+        current_signature = build_front_signature(pop_objs(front1, :));
         if isequal(current_signature, last_signature)
             stagnation_counter = stagnation_counter + 1;
         else
@@ -362,18 +388,18 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         end
 
         if should_log_iteration(gen, max_gen, log_interval)
-            log_lift_front_summary('EXPSTD-LIFT', 'gen', gen, max_gen, pop_objs, front1, ...
+            log_lift_front_summary('EXPSTD-LIFT', 'gen', gen, max_gen, pop_objs, fronts, front1, ...
                 struct('immigrants', immigrants_count, 'replaced', replaced_count, 'stall', stagnation_counter));
         end
     end
-    log_lift_front_summary('EXPSTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts{1}, ...
+    log_lift_front_summary('EXPSTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts, fronts{1}, ...
         struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
     % 主循环结束
 
 % 函数结束
 end
 
-function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
+function [schedules, objectives, batch_info, constraint_violation] = cost_func_lift_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks);
@@ -385,6 +411,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
     agv_times = zeros(1, num_agvs);
     agv_energy = zeros(1, num_agvs);
 
+    constraint_violation = 0;
     for k = 1:num_agvs
         real_agv_id = agv_ids(k);
         curr_agv = agv_params(real_agv_id);
@@ -450,6 +477,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
                 [pick_rc, segment_dist, ~, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 1, current_payload);
                 if ~feasible
                     objectives = [inf, inf, inf];
+                    constraint_violation = inf;
                     return;
                 end
                 dist_sum = dist_sum + segment_dist;
@@ -464,6 +492,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
                 [drop_rc, segment_dist, ~, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'dropoff', 1, current_payload);
                 if ~feasible
                     objectives = [inf, inf, inf];
+                    constraint_violation = inf;
                     return;
                 end
                 dist_sum = dist_sum + segment_dist;
@@ -471,6 +500,12 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
                 energy_spent = energy_spent + segment_dist * (e_base + e_load_factor * (current_payload / max_load_capacity));
                 curr_pos = drop_rc;
                 current_payload = current_payload - tasks(batch(j), 3);
+                if size(tasks, 2) >= 4
+                    deadline = tasks(batch(j), 4);
+                    if isfinite(deadline) && ~isnan(deadline)
+                        constraint_violation = constraint_violation + max(0, time_spent - deadline);
+                    end
+                end
             end
         end
 
@@ -482,7 +517,7 @@ function [schedules, objectives, batch_info] = cost_func_lift_moo(chromosome, ta
     objectives = [sum(agv_dists), max(agv_times), sum(agv_energy)];
 end
 
-function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
+function [schedules, objectives, constraint_violation] = cost_func_fork_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
     num_tasks = size(tasks, 1);
     num_agvs = length(agv_ids);
     task_seq = chromosome(1:num_tasks);
@@ -493,6 +528,7 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
     agv_times = zeros(1, num_agvs);
     agv_energy = zeros(1, num_agvs);
 
+    constraint_violation = 0;
     for k = 1:num_agvs
         real_agv_id = agv_ids(k);
         curr_agv = agv_params(real_agv_id);
@@ -523,12 +559,14 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
             [pick_rc, d1, ~, feasible_pick] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 2, 0);
             if ~feasible_pick
                 objectives = [inf, inf, inf];
+                constraint_violation = inf;
                 return;
             end
 
             [drop_rc, d2, ~, feasible_drop] = query_region_oracle_or_astar(path_oracle, pick_rc, target_id, 'dropoff', 2, task_weight);
             if ~feasible_drop
                 objectives = [inf, inf, inf];
+                constraint_violation = inf;
                 return;
             end
 
@@ -536,6 +574,12 @@ function [schedules, objectives] = cost_func_fork_moo(chromosome, tasks, agv_ids
             energy_spent = energy_spent + (d1 * e_base);
             energy_spent = energy_spent + (d2 * (e_base + e_load_factor * (task_weight / max_load_capacity)));
             time_spent = time_spent + (d1 + d2) / speed;
+            if size(tasks, 2) >= 4
+                deadline = tasks(row_idx, 4);
+                if isfinite(deadline) && ~isnan(deadline)
+                    constraint_violation = constraint_violation + max(0, time_spent - deadline);
+                end
+            end
             curr_pos = drop_rc;
         end
 
@@ -556,9 +600,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
     time_hist = zeros(1, max_gen); 
     energy_hist = zeros(1, max_gen); 
     
-    pc_max = 0.78; pc_min = 0.42;  
-    pm_max = 0.12; pm_min = 0.035; 
-    max_obj_copies = 1;
+    pc_max = 0.84; pc_min = 0.50;  
+    pm_max = 0.16; pm_min = 0.05; 
+    max_obj_copies = 2;
     stagnation_counter = 0;
     last_signature = [];
     % 【新增】：预分配内存，提升运行速度
@@ -573,16 +617,18 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
     
     %% 初始化评估 (变更为 3 维)
     pop_objs = zeros(pop_size, 3); 
+    pop_violation = zeros(pop_size, 1);
     for i = 1:pop_size
-        [~, obj] = eval_func(pop(i,:));
+        [~, obj, violation] = eval_func(pop(i,:));
         pop_objs(i,:) = obj;
+        pop_violation(i) = violation;
     end    
     
-    [fronts, rank] = fast_non_dominated_sorting(pop_objs);
+    [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation);
     cd = calc_crowding_distance(pop_objs, fronts);
-    last_signature = min(pop_objs(fronts{1}, :), [], 1);
+    last_signature = build_front_signature(pop_objs(fronts{1}, :));
     log_nsga_start('EXPSTD-FORK', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
-    log_fork_front_summary('EXPSTD-FORK', 'init', 0, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
+    log_fork_front_summary('EXPSTD-FORK', 'init', 0, max_gen, pop, pop_objs, fronts, fronts{1}, num_tasks, num_sub_agvs, ...
         struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
     
     for gen = 1:max_gen
@@ -596,8 +642,8 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         moo_ranks(sorted_moo_idx) = 1:pop_size;
         i = 1;
         while i <= pop_size
-            p1_idx = tournament_select_nsga2(rank, cd);
-            p2_idx = tournament_select_nsga2(rank, cd);         
+            p1_idx = tournament_select_nsga2(rank, cd, pop_violation);
+            p2_idx = tournament_select_nsga2(rank, cd, pop_violation);         
             child1 = pop(p1_idx, :); 
             child2 = pop(p2_idx, :);
             
@@ -638,6 +684,15 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             child1 = diversify_child_chromosome(child1, child2, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
             child2 = diversify_child_chromosome(child2, child1, pop(p1_idx, :), pop(p2_idx, :), num_tasks, num_sub_agvs);
 
+            guided_shift_prob1 = min(0.90, 0.42 + 0.18 * (rank_p1 <= avg_rank) + 0.15 * (stagnation_counter >= 12));
+            guided_shift_prob2 = min(0.90, 0.42 + 0.18 * (rank_p2 <= avg_rank) + 0.15 * (stagnation_counter >= 12));
+            if rand < guided_shift_prob1
+                child1 = intensify_fork_cross_agv_reassignment(child1, tasks, num_tasks, num_sub_agvs, 1 + (stagnation_counter >= 18));
+            end
+            if rand < guided_shift_prob2
+                child2 = intensify_fork_cross_agv_reassignment(child2, tasks, num_tasks, num_sub_agvs, 1 + (stagnation_counter >= 18));
+            end
+
             offspring(i,:) = child1;
             if i+1 <= pop_size, offspring(i+1,:) = child2; end
             i = i + 2;
@@ -645,27 +700,32 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         
         % 评估子代 (变更为 3 维)
         off_objs = zeros(pop_size, 3);
+        off_violation = zeros(pop_size, 1);
         for i = 1:pop_size
-            [~, obj] = eval_func(offspring(i,:));
+            [~, obj, violation] = eval_func(offspring(i,:));
             off_objs(i,:) = obj;
+            off_violation(i) = violation;
         end
         
         % 合并与非支配排序
         combined_pop = [pop; offspring];
         combined_objs = [pop_objs; off_objs];
+        combined_violation = [pop_violation; off_violation];
         prev_unique_front = count_unique_front_objs(pop_objs(fronts{1}, :));
         immigrants_count = determine_fork_immigrant_count(prev_unique_front, stagnation_counter, pop_size);
         if immigrants_count > 0
-            [immigrant_pop, immigrant_objs] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, eval_func);
+            [immigrant_pop, immigrant_objs, immigrant_violation] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, eval_func);
             combined_pop = [combined_pop; immigrant_pop];
             combined_objs = [combined_objs; immigrant_objs];
+            combined_violation = [combined_violation; immigrant_violation];
         end
-        [c_fronts, ~] = fast_non_dominated_sorting(combined_objs);
+        [c_fronts, ~] = fast_non_dominated_sorting(combined_objs, combined_violation);
         c_cd = calc_crowding_distance(combined_objs, c_fronts);
         
         % 精英截断 (变更为 3 维)
         pop = zeros(pop_size, num_tasks * 2);
         pop_objs = zeros(pop_size, 3);
+        pop_violation = zeros(pop_size, 1);
         current_idx = 1; f = 1;
         
         while current_idx <= pop_size && f <= length(c_fronts)
@@ -673,6 +733,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
             if current_idx + length(front) - 1 <= pop_size
                 pop(current_idx : current_idx + length(front) - 1, :) = combined_pop(front, :);
                 pop_objs(current_idx : current_idx + length(front) - 1, :) = combined_objs(front, :);
+                pop_violation(current_idx : current_idx + length(front) - 1, :) = combined_violation(front, :);
                 current_idx = current_idx + length(front);
             else
                 [~, sort_idx] = sort(c_cd(front), 'descend');
@@ -680,16 +741,17 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
                 selected_front = front(sort_idx(1:num_needed));
                 pop(current_idx : end, :) = combined_pop(selected_front, :);
                 pop_objs(current_idx : end, :) = combined_objs(selected_front, :);
+                pop_violation(current_idx : end, :) = combined_violation(selected_front, :);
                 break;
             end
             f = f + 1;
         end
         
-        [pop, pop_objs, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
-        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs);
-        [pop, pop_objs, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, pop_violation, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs, pop_violation);
+        [pop, pop_objs, pop_violation, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
         replaced_count = replaced_count_all + replaced_count_front;
-        [fronts, rank] = fast_non_dominated_sorting(pop_objs);
+        [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation);
         cd = calc_crowding_distance(pop_objs, fronts);
         
         % 记录收敛曲线
@@ -702,18 +764,19 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist,gen_front
         energy_hist(gen) = min_objs_in_front(3);
         % 【新增】：保存这一代的第一前沿所有解的目标值 (N x 3 矩阵)
         gen_fronts_history{gen} = pop_objs(front1, :);
-        if all(abs(min_objs_in_front - last_signature) <= 1e-9)
+        current_signature = build_front_signature(pop_objs(front1, :));
+        if isequal(current_signature, last_signature)
             stagnation_counter = stagnation_counter + 1;
         else
             stagnation_counter = 0;
-            last_signature = min_objs_in_front;
+            last_signature = current_signature;
         end
         if should_log_iteration(gen, max_gen, log_interval)
-            log_fork_front_summary('EXPSTD-FORK', 'gen', gen, max_gen, pop, pop_objs, front1, num_tasks, num_sub_agvs, ...
+            log_fork_front_summary('EXPSTD-FORK', 'gen', gen, max_gen, pop, pop_objs, fronts, front1, num_tasks, num_sub_agvs, ...
                 struct('immigrants', immigrants_count, 'replaced', replaced_count, 'stall', stagnation_counter));
         end
     end
-    log_fork_front_summary('EXPSTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts{1}, num_tasks, num_sub_agvs, ...
+    log_fork_front_summary('EXPSTD-FORK', 'done', max_gen, max_gen, pop, pop_objs, fronts, fronts{1}, num_tasks, num_sub_agvs, ...
         struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
 end
 
@@ -755,10 +818,29 @@ function cd = calc_crowding_distance(pop_objs, fronts)
     end
 end
 
-function idx = tournament_select_nsga2(rank, cd)
+function idx = tournament_select_nsga2(rank, cd, violation)
     pop_size = length(rank);
     i1 = randi(pop_size);
     i2 = randi(pop_size);
+    if nargin >= 3 && ~isempty(violation)
+        tol = 1e-9;
+        feas1 = isfinite(violation(i1)) && violation(i1) <= tol;
+        feas2 = isfinite(violation(i2)) && violation(i2) <= tol;
+        if feas1 && ~feas2
+            idx = i1;
+            return;
+        elseif ~feas1 && feas2
+            idx = i2;
+            return;
+        elseif ~feas1 && ~feas2 && abs(violation(i1) - violation(i2)) > tol
+            if violation(i1) < violation(i2)
+                idx = i1;
+            else
+                idx = i2;
+            end
+            return;
+        end
+    end
     
     % 规则 1：等级低的优先 (帕累托层面靠前)
     if rank(i1) < rank(i2)
@@ -775,20 +857,23 @@ function idx = tournament_select_nsga2(rank, cd)
     end
 end
 
-function [fronts, rank] = fast_non_dominated_sorting(pop_objs)
+function [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation)
     pop_size = size(pop_objs, 1);
     fronts = cell(pop_size, 1);
     domination_count = zeros(pop_size, 1); % 记录被多少人支配 (n_p)
     dominated_set = cell(pop_size, 1);     % 记录支配了哪些人 (S_p)
     rank = zeros(pop_size, 1);
+    if nargin < 2 || isempty(pop_violation)
+        pop_violation = zeros(pop_size, 1);
+    end
 
     for i = 1:pop_size
         for j = 1:pop_size
             if i == j, continue; end
             % 支配条件：i 的所有目标都 <= j，且至少有一个目标 < j
-            if all(pop_objs(i,:) <= pop_objs(j,:)) && any(pop_objs(i,:) < pop_objs(j,:))
+            if constraint_dominates(pop_objs(i,:), pop_violation(i), pop_objs(j,:), pop_violation(j))
                 dominated_set{i} = [dominated_set{i}, j];
-            elseif all(pop_objs(j,:) <= pop_objs(i,:)) && any(pop_objs(j,:) < pop_objs(i,:))
+            elseif constraint_dominates(pop_objs(j,:), pop_violation(j), pop_objs(i,:), pop_violation(i))
                 domination_count(i) = domination_count(i) + 1;
             end
         end
@@ -833,6 +918,30 @@ function idx = select_compromise_index(front_objs)
     d_worst = sqrt(sum((obj_norm - ideal_worst).^2, 2));
     closeness = d_worst ./ (d_best + d_worst + 1e-9);
     [~, idx] = max(closeness);
+end
+
+function idx = select_feasible_compromise_index(front_objs, front_violation, compromise_selector)
+    if isempty(front_objs)
+        idx = 1;
+        return;
+    end
+
+    if nargin < 3 || isempty(compromise_selector)
+        compromise_selector = @select_compromise_index;
+    end
+
+    tol = 1e-9;
+    feasible_idx = find(isfinite(front_violation) & front_violation <= tol);
+    if ~isempty(feasible_idx)
+        local_idx = compromise_selector(front_objs(feasible_idx, :));
+        idx = feasible_idx(local_idx);
+        return;
+    end
+
+    min_violation = min(front_violation);
+    candidate_idx = find(abs(front_violation - min_violation) <= tol);
+    local_idx = compromise_selector(front_objs(candidate_idx, :));
+    idx = candidate_idx(local_idx);
 end
 
 function rep_idx = get_representative_front_index(pop_objs, front_idx)
@@ -1125,6 +1234,93 @@ function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_ra
     end
 end
 
+function child = intensify_fork_cross_agv_reassignment(child, tasks, num_tasks, num_agvs, strength)
+    if nargin < 5
+        strength = 1;
+    end
+    if num_tasks < 2 || num_agvs < 2
+        return;
+    end
+
+    task_seq = child(1:num_tasks);
+    agv_assign = child(num_tasks+1:end);
+    task_weights = tasks(task_seq, 3);
+
+    for step = 1:max(1, strength)
+        task_counts = accumarray(agv_assign(:), 1, [num_agvs, 1], @sum, 0);
+        load_weights = accumarray(agv_assign(:), task_weights(:), [num_agvs, 1], @sum, 0);
+        [~, heavy_agv] = max(load_weights + 10 * task_counts);
+        [~, light_agv] = min(load_weights + 10 * task_counts);
+
+        load_gap = load_weights(heavy_agv) - load_weights(light_agv);
+        count_gap = task_counts(heavy_agv) - task_counts(light_agv);
+        if heavy_agv == light_agv || (load_gap < 10 && count_gap < 2)
+            break;
+        end
+
+        heavy_pos = find(agv_assign == heavy_agv);
+        light_pos = find(agv_assign == light_agv);
+        if isempty(heavy_pos)
+            break;
+        end
+
+        candidate_targets = tasks(task_seq(heavy_pos), 2);
+        light_targets = [];
+        if ~isempty(light_pos)
+            light_targets = tasks(task_seq(light_pos), 2);
+        end
+
+        candidate_scores = task_weights(heavy_pos);
+        if ~isempty(light_targets)
+            candidate_scores = candidate_scores + 12 * ismember(candidate_targets, light_targets);
+        end
+        if count_gap >= 3
+            candidate_scores = candidate_scores + 5;
+        end
+
+        [~, best_local_idx] = max(candidate_scores);
+        move_pos = heavy_pos(best_local_idx);
+        agv_assign(move_pos) = light_agv;
+
+        if ~isempty(light_pos)
+            insert_pos = light_pos(end) + 1;
+            [task_seq, agv_assign] = move_gene_pair(task_seq, agv_assign, move_pos, min(num_tasks, insert_pos));
+        end
+
+        task_weights = tasks(task_seq, 3);
+    end
+
+    child = [task_seq, agv_assign];
+end
+
+function [task_seq, agv_assign] = move_gene_pair(task_seq, agv_assign, from_idx, to_idx)
+    if from_idx == to_idx || from_idx < 1 || from_idx > numel(task_seq)
+        return;
+    end
+    to_idx = max(1, min(numel(task_seq), to_idx));
+
+    moved_task = task_seq(from_idx);
+    moved_agv = agv_assign(from_idx);
+
+    task_seq(from_idx) = [];
+    agv_assign(from_idx) = [];
+
+    if from_idx < to_idx
+        to_idx = to_idx - 1;
+    end
+
+    if to_idx <= 1
+        task_seq = [moved_task, task_seq];
+        agv_assign = [moved_agv, agv_assign];
+    elseif to_idx > numel(task_seq)
+        task_seq = [task_seq, moved_task];
+        agv_assign = [agv_assign, moved_agv];
+    else
+        task_seq = [task_seq(1:to_idx-1), moved_task, task_seq(to_idx:end)];
+        agv_assign = [agv_assign(1:to_idx-1), moved_agv, agv_assign(to_idx:end)];
+    end
+end
+
 function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
     if num_tasks < 2
         child1 = p1;
@@ -1274,7 +1470,7 @@ function chrom = force_diversify_chromosome(chrom, num_tasks, num_agvs)
     chrom(num_tasks + assign_idx) = randi([1, num_agvs], 1, assign_count);
 end
 
-function [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, num_tasks, num_agvs, eval_func, max_obj_copies)
+function [pop, pop_objs, pop_violation, replaced_count] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_agvs, eval_func, max_obj_copies)
     replaced_count = 0;
     rounded_objs = quantize_moo_objectives(pop_objs);
     [~, ~, obj_group] = unique(rounded_objs, 'rows', 'stable');
@@ -1288,14 +1484,15 @@ function [pop, pop_objs, replaced_count] = reduce_population_duplicates_moo(pop,
             idx = overflow(k);
             pop(idx, 1:num_tasks) = randperm(num_tasks);
             pop(idx, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
-            [~, obj] = eval_func(pop(idx, :));
+            [~, obj, violation] = eval_func(pop(idx, :));
             pop_objs(idx, :) = obj;
+            pop_violation(idx) = violation;
             replaced_count = replaced_count + 1;
         end
     end
 end
 
-function [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_objs, front_idx, num_tasks, num_agvs, eval_func, max_obj_copies)
+function [pop, pop_objs, pop_violation, replaced_count] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, front_idx, num_tasks, num_agvs, eval_func, max_obj_copies)
     replaced_count = 0;
     if isempty(front_idx)
         return;
@@ -1313,62 +1510,71 @@ function [pop, pop_objs, replaced_count] = reduce_front_duplicates_moo(pop, pop_
             idx = overflow(k);
             pop(idx, 1:num_tasks) = randperm(num_tasks);
             pop(idx, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
-            [~, obj] = eval_func(pop(idx, :));
+            [~, obj, violation] = eval_func(pop(idx, :));
             pop_objs(idx, :) = obj;
+            pop_violation(idx) = violation;
             replaced_count = replaced_count + 1;
         end
     end
 end
 
-function [rand_pop, rand_objs] = generate_random_population_moo(count, num_tasks, num_agvs, eval_func)
+function [rand_pop, rand_objs, rand_violation] = generate_random_population_moo(count, num_tasks, num_agvs, eval_func)
     rand_pop = zeros(count, num_tasks * 2);
     rand_objs = zeros(count, 3);
+    rand_violation = zeros(count, 1);
     for i = 1:count
         rand_pop(i, 1:num_tasks) = randperm(num_tasks);
         rand_pop(i, num_tasks+1:end) = randi([1, num_agvs], 1, num_tasks);
-        [~, obj] = eval_func(rand_pop(i, :));
+        [~, obj, violation] = eval_func(rand_pop(i, :));
         rand_objs(i, :) = obj;
+        rand_violation(i) = violation;
     end
 end
 
 function immigrants_count = determine_fork_immigrant_count(unique_front, stagnation_counter, pop_size)
     immigrants_count = 0;
     if unique_front <= 2
-        immigrants_count = max(6, ceil(0.08 * pop_size));
+        if stagnation_counter >= 30 && mod(stagnation_counter, 10) == 0
+            immigrants_count = max(immigrants_count, ceil(0.11 * pop_size));
+        elseif stagnation_counter >= 15 && mod(stagnation_counter, 5) == 0
+            immigrants_count = max(immigrants_count, ceil(0.08 * pop_size));
+        elseif stagnation_counter == 0
+            immigrants_count = max(immigrants_count, max(3, ceil(0.05 * pop_size)));
+        end
     elseif unique_front <= 4
-        immigrants_count = max(3, ceil(0.04 * pop_size));
-    end
-
-    if stagnation_counter >= 12
-        immigrants_count = max(immigrants_count, ceil(0.10 * pop_size));
-    elseif stagnation_counter >= 6
-        immigrants_count = max(immigrants_count, ceil(0.06 * pop_size));
-    end
-
-    if stagnation_counter > 0 && mod(stagnation_counter, 3) ~= 0
-        immigrants_count = min(immigrants_count, 2);
-    elseif stagnation_counter >= 4
+        if stagnation_counter >= 30 && mod(stagnation_counter, 10) == 0
+            immigrants_count = max(immigrants_count, ceil(0.09 * pop_size));
+        elseif stagnation_counter >= 15 && mod(stagnation_counter, 5) == 0
+            immigrants_count = max(immigrants_count, ceil(0.06 * pop_size));
+        end
+    elseif stagnation_counter >= 36 && mod(stagnation_counter, 12) == 0
         immigrants_count = max(immigrants_count, ceil(0.04 * pop_size));
     end
+
+    immigrants_count = min(immigrants_count, ceil(0.12 * pop_size));
 end
 
 function immigrants_count = determine_lift_immigrant_count(unique_front, stagnation_counter, pop_size)
     immigrants_count = 0;
     if unique_front <= 2
-        immigrants_count = max(4, ceil(0.05 * pop_size));
+        if stagnation_counter >= 30 && mod(stagnation_counter, 10) == 0
+            immigrants_count = max(immigrants_count, ceil(0.07 * pop_size));
+        elseif stagnation_counter >= 12 && mod(stagnation_counter, 6) == 0
+            immigrants_count = max(immigrants_count, ceil(0.05 * pop_size));
+        elseif stagnation_counter == 0
+            immigrants_count = max(immigrants_count, max(2, ceil(0.03 * pop_size)));
+        end
     elseif unique_front <= 4
-        immigrants_count = max(2, ceil(0.03 * pop_size));
+        if stagnation_counter >= 36 && mod(stagnation_counter, 12) == 0
+            immigrants_count = max(immigrants_count, ceil(0.06 * pop_size));
+        elseif stagnation_counter >= 18 && mod(stagnation_counter, 9) == 0
+            immigrants_count = max(immigrants_count, ceil(0.04 * pop_size));
+        end
+    elseif stagnation_counter >= 45 && mod(stagnation_counter, 15) == 0
+        immigrants_count = max(immigrants_count, ceil(0.03 * pop_size));
     end
 
-    if stagnation_counter >= 12
-        immigrants_count = max(immigrants_count, ceil(0.08 * pop_size));
-    elseif stagnation_counter >= 6
-        immigrants_count = max(immigrants_count, ceil(0.05 * pop_size));
-    end
-
-    if stagnation_counter > 0 && mod(stagnation_counter, 4) ~= 0
-        immigrants_count = min(immigrants_count, 1);
-    end
+    immigrants_count = min(immigrants_count, ceil(0.10 * pop_size));
 end
 
 function unique_front = count_unique_front_objs(front_objs)
@@ -1376,7 +1582,36 @@ function unique_front = count_unique_front_objs(front_objs)
 end
 
 function rounded_objs = quantize_moo_objectives(pop_objs)
-    rounded_objs = [round(pop_objs(:, 1), 0), round(pop_objs(:, 2), 1), round(pop_objs(:, 3), 3)];
+    rounded_objs = [round(pop_objs(:, 1), 0), round(pop_objs(:, 2), 2), round(pop_objs(:, 3), 4)];
+end
+
+function tf = constraint_dominates(obj_a, violation_a, obj_b, violation_b)
+    tol = 1e-9;
+    feasible_a = isfinite(violation_a) && violation_a <= tol;
+    feasible_b = isfinite(violation_b) && violation_b <= tol;
+
+    if feasible_a && ~feasible_b
+        tf = true;
+        return;
+    elseif ~feasible_a && feasible_b
+        tf = false;
+        return;
+    elseif ~feasible_a && ~feasible_b
+        if violation_a < violation_b - tol
+            tf = true;
+            return;
+        elseif violation_a > violation_b + tol
+            tf = false;
+            return;
+        end
+    end
+
+    tf = all(obj_a <= obj_b) && any(obj_a < obj_b);
+end
+
+function signature = build_front_signature(front_objs)
+    rounded_front = quantize_moo_objectives(front_objs);
+    signature = sortrows(unique(rounded_front, 'rows'), [1 2 3]);
 end
 
 function tf = lexicographic_less(a, b)
@@ -1400,13 +1635,14 @@ function log_nsga_start(tag, num_tasks, num_agvs, pop_size, max_gen, log_interva
         tag, num_tasks, num_agvs, pop_size, max_gen, log_interval);
 end
 
-function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compromise_selector)
+function log_front_summary(tag, phase, gen, max_gen, pop_objs, fronts, front_idx, compromise_selector)
     front_objs = pop_objs(front_idx, :);
     raw_front = size(front_objs, 1);
     unique_front = size(unique(front_objs, 'rows'), 1);
     min_objs = min(front_objs, [], 1);
     rep_idx = compromise_selector(front_objs);
     compromise = front_objs(rep_idx, :);
+    [front_levels, front_sizes_str] = summarize_front_layers(fronts);
 
     if strcmp(phase, 'gen')
         fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
@@ -1417,10 +1653,12 @@ function log_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, compro
             tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
             compromise(1), compromise(2), compromise(3));
     end
+    fprintf('      [%s] %-5s | frontLevels=%d | frontSizes=%s\n', ...
+        tag, phase, front_levels, front_sizes_str);
 end
 
-function log_lift_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, stats)
-    if nargin < 7 || isempty(stats)
+function log_lift_front_summary(tag, phase, gen, max_gen, pop_objs, fronts, front_idx, stats)
+    if nargin < 8 || isempty(stats)
         stats = struct('immigrants', 0, 'replaced', 0, 'stall', 0);
     end
     front_objs = pop_objs(front_idx, :);
@@ -1429,6 +1667,7 @@ function log_lift_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, s
     min_objs = min(front_objs, [], 1);
     rep_idx = select_compromise_index(front_objs);
     compromise = front_objs(rep_idx, :);
+    [front_levels, front_sizes_str] = summarize_front_layers(fronts);
 
     if strcmp(phase, 'gen')
         fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
@@ -1439,13 +1678,15 @@ function log_lift_front_summary(tag, phase, gen, max_gen, pop_objs, front_idx, s
             tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
             compromise(1), compromise(2), compromise(3));
     end
+    fprintf('      [%s] %-5s | frontLevels=%d | frontSizes=%s\n', ...
+        tag, phase, front_levels, front_sizes_str);
 
     fprintf('      [%s] %-5s | immigrants=%d | replaced=%d | stall=%d\n', ...
         tag, phase, stats.immigrants, stats.replaced, stats.stall);
 end
 
-function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_idx, num_tasks, num_agvs, stats)
-    if nargin < 10 || isempty(stats)
+function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, fronts, front_idx, num_tasks, num_agvs, stats)
+    if nargin < 11 || isempty(stats)
         stats = struct('immigrants', 0, 'replaced', 0, 'stall', 0);
     end
     front_objs = pop_objs(front_idx, :);
@@ -1461,6 +1702,7 @@ function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_i
     [~, best_time_idx] = min(front_objs(:, 2));
     best_time = front_objs(best_time_idx, :);
     best_time_load = histcounts(front_pop(best_time_idx, num_tasks+1:end), 1:num_agvs+1);
+    [front_levels, front_sizes_str] = summarize_front_layers(fronts);
 
     if strcmp(phase, 'gen')
         fprintf('      [%s] gen %3d/%d | rawFront=%d | uniqueFront=%d | min=[%.1f %.1f %.3f] | compromise=[%.1f %.1f %.3f]\n', ...
@@ -1471,9 +1713,25 @@ function log_fork_front_summary(tag, phase, gen, max_gen, pop, pop_objs, front_i
             tag, phase, raw_front, unique_front, min_objs(1), min_objs(2), min_objs(3), ...
             compromise(1), compromise(2), compromise(3));
     end
+    fprintf('      [%s] %-5s | frontLevels=%d | frontSizes=%s\n', ...
+        tag, phase, front_levels, front_sizes_str);
 
     fprintf('      [%s] %-5s | compromiseLoad=%s | bestTime=[%.1f %.1f %.3f] | bestTimeLoad=%s\n', ...
         tag, phase, mat2str(compromise_load), best_time(1), best_time(2), best_time(3), mat2str(best_time_load));
     fprintf('      [%s] %-5s | immigrants=%d | replaced=%d | stall=%d\n', ...
         tag, phase, stats.immigrants, stats.replaced, stats.stall);
+end
+
+function [front_levels, front_sizes_str] = summarize_front_layers(fronts)
+    front_levels = numel(fronts);
+    if front_levels == 0
+        front_sizes_str = '[]';
+        return;
+    end
+
+    front_sizes = zeros(1, front_levels);
+    for i = 1:front_levels
+        front_sizes(i) = numel(fronts{i});
+    end
+    front_sizes_str = mat2str(front_sizes);
 end

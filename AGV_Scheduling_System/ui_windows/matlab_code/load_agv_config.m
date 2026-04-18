@@ -29,11 +29,13 @@ agv_params(3).speed = 2.0;
 agv_params(3).battery_current = 100;
 agv_params(3).e_base = 0.08;
 agv_params(3).e_load_factor = 0.2;
+agv_params(3).max_load_capacity = 200;
 
 agv_params(4).agv_id = 'AGV-04';
 agv_params(4).type = 2;
-agv_params(4).initial_position = 1;
+agv_params(4).initial_position = 3;
 agv_params(4).speed = 2.0;
 agv_params(4).battery_current = 100;
 agv_params(4).e_base = 0.08;
 agv_params(4).e_load_factor = 0.2;
+agv_params(4).max_load_capacity = 200;
