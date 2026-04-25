@@ -15,7 +15,9 @@ function ok = send_schedule_webhook(num_agvs, agv_schedules)
     payload = struct('type', 'schedule_result', 'assignments', {schedule_list});
 
     try
-        options = weboptions('MediaType', 'application/json', 'Timeout', 2.0);
+        % Schedule callbacks share the same local API endpoint as runtime
+        % status polling, so allow a longer timeout to avoid false failures.
+        options = weboptions('MediaType', 'application/json', 'Timeout', 8.0);
         response = webwrite(webhook_url, payload, options);
         ok = true;
 

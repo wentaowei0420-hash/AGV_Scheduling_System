@@ -185,6 +185,41 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         end
     end
 
+    function should_continue = register_conflict_report(conflict_key, event_t, id_self, id_blocker, conflict_name)
+        should_continue = false;
+        if isKey(reported_conflict_keys, conflict_key)
+            return;
+        end
+
+        reported_conflict_keys(conflict_key) = true;
+        pos_self = AGVs(id_self).pos;
+        pos_blocker = AGVs(id_blocker).pos;
+        if ~send_conflict_webhook(round(event_t), id_self, pos_self, id_blocker, pos_blocker, conflict_name)
+            conflict_log('WEBHOOK_SEND_FAILED sim_step=%g AGV%d vs AGV%d type=%s', ...
+                round(event_t), id_self, id_blocker, conflict_type_cn(conflict_name));
+        end
+        should_continue = true;
+    end
+
+    function label = conflict_type_cn(conflict_name)
+        switch strtrim(char(conflict_name))
+            case 'Node contention'
+                label = '节点冲突';
+            case 'Occupied node'
+                label = '占位冲突';
+            case 'Rear-end'
+                label = '追尾冲突';
+            case 'Head-on swap'
+                label = '相向冲突(交换)';
+            case 'Head-on meet'
+                label = '相向冲突(相遇)';
+            case 'Three-way interlock'
+                label = '环状互锁';
+            otherwise
+                label = char(conflict_name);
+        end
+    end
+
     function txt = node_str(node)
         if isempty(node)
             txt = '[]';
@@ -446,10 +481,9 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
 
         conflict_pair = sort([id_self, id_blocker]);
         conflict_key = sprintf('%d_%d_%d', round(event_t), conflict_pair(1), conflict_pair(2));
-        if isKey(reported_conflict_keys, conflict_key)
+        if ~register_conflict_report(conflict_key, event_t, id_self, id_blocker, conflict_info.name)
             return;
         end
-        reported_conflict_keys(conflict_key) = true;
 
         P_self = calculate_ahp_priority(AGVs(id_self), tasks_info, event_t);
         P_blocker = calculate_ahp_priority(AGVs(id_blocker), tasks_info, event_t);
@@ -473,7 +507,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
 
         if strcmp(conflict_info.name, 'Node contention')
             conflict_log('AGV%d vs AGV%d classified=%s node=%s winner=AGV%d loser=AGV%d -> wait_then_replan/safe_harbor', ...
-                id_self, id_blocker, conflict_info.name, node_str(conflict_info.conflict_node), winner_id, loser_id);
+                id_self, id_blocker, conflict_type_cn(conflict_info.name), node_str(conflict_info.conflict_node), winner_id, loser_id);
             if apply_wait_then_replan_strategy(loser_id, winner_id, conflict_info, event_t)
                 % handled
             elseif plan_yield_path(loser_id, winner_id, event_t)
@@ -486,7 +520,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             end
         elseif strcmp(conflict_info.name, 'Occupied node')
             conflict_log('AGV%d vs AGV%d classified=%s blocker_pos=%s actor=AGV%d -> replan dynamic target', ...
-                id_self, id_blocker, conflict_info.name, node_str(AGVs(winner_id).pos), loser_id);
+                id_self, id_blocker, conflict_type_cn(conflict_info.name), node_str(AGVs(winner_id).pos), loser_id);
             if replan_dynamic_target(loser_id, event_t)
                 conflict_log('AGV%d action=replan_dynamic_target success target=%s', loser_id, node_str(AGVs(loser_id).target_node));
                 schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
@@ -502,7 +536,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             end
         elseif strcmp(conflict_info.name, 'Rear-end')
             conflict_log('AGV%d vs AGV%d classified=%s overtaker=AGV%d leader=AGV%d -> bypass/overtake', ...
-                id_self, id_blocker, conflict_info.name, loser_id, winner_id);
+                id_self, id_blocker, conflict_type_cn(conflict_info.name), loser_id, winner_id);
             if plan_bypass_path(loser_id, winner_id, event_t)
                 AGVs(loser_id).rear_end_retry_count = 0;
                 conflict_log('AGV%d action=bypass_overtake success', loser_id);
@@ -525,7 +559,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             end
         else
             conflict_log('AGV%d vs AGV%d classified=%s winner=AGV%d retreat=AGV%d -> safe_harbor/replan/yield', ...
-                id_self, id_blocker, conflict_info.name, winner_id, loser_id);
+                id_self, id_blocker, conflict_type_cn(conflict_info.name), winner_id, loser_id);
             if apply_safe_harbor_strategy(loser_id, winner_id, event_t, conflict_info.conflict_t + max(1, AGVs(winner_id).step_dur))
                 % handled
             elseif replan_dynamic_target(loser_id, event_t)
@@ -549,10 +583,9 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
     function resolve_conflict_precomputed(rec, event_t)
         conflict_pair = sort([rec.self_id, rec.blocker_id]);
         conflict_key = sprintf('%d_%d_%d', round(event_t), conflict_pair(1), conflict_pair(2));
-        if isKey(reported_conflict_keys, conflict_key)
+        if ~register_conflict_report(conflict_key, event_t, rec.self_id, rec.blocker_id, rec.classified_type)
             return;
         end
-        reported_conflict_keys(conflict_key) = true;
 
         loser_id = rec.loser_id;
         winner_id = rec.winner_id;
@@ -562,7 +595,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             conflict_info = struct('name', conflict_name, 'conflict_node', rec.conflict_node, ...
                 'conflict_t', rec.first_conflict_t, 'wait_node', get_previous_path_node(loser_id, rec.conflict_node));
             conflict_log('BATCH AGV%d vs AGV%d classified=%s node=%s window=%s first_t=%g winner=AGV%d loser=AGV%d', ...
-                rec.self_id, rec.blocker_id, conflict_name, node_str(rec.conflict_node), rec.window_type, rec.first_conflict_t, winner_id, loser_id);
+                rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), node_str(rec.conflict_node), rec.window_type, rec.first_conflict_t, winner_id, loser_id);
             if apply_wait_then_replan_strategy(loser_id, winner_id, conflict_info, event_t)
                 % handled
             elseif plan_yield_path(loser_id, winner_id, event_t)
@@ -575,7 +608,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             end
         elseif strcmp(conflict_name, 'Occupied node')
             conflict_log('BATCH AGV%d vs AGV%d classified=%s blocker_pos=%s window=%s first_t=%g actor=AGV%d -> replan dynamic target', ...
-                rec.self_id, rec.blocker_id, conflict_name, node_str(AGVs(winner_id).pos), rec.window_type, rec.first_conflict_t, loser_id);
+                rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), node_str(AGVs(winner_id).pos), rec.window_type, rec.first_conflict_t, loser_id);
             if replan_dynamic_target(loser_id, event_t)
                 conflict_log('AGV%d action=replan_dynamic_target success target=%s', loser_id, node_str(AGVs(loser_id).target_node));
                 schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
@@ -591,7 +624,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             end
         elseif strcmp(conflict_name, 'Rear-end')
             conflict_log('BATCH AGV%d vs AGV%d classified=%s window=%s first_t=%g overtaker=AGV%d leader=AGV%d', ...
-                rec.self_id, rec.blocker_id, conflict_name, rec.window_type, rec.first_conflict_t, loser_id, winner_id);
+                rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), rec.window_type, rec.first_conflict_t, loser_id, winner_id);
             if plan_bypass_path(loser_id, winner_id, event_t)
                 AGVs(loser_id).rear_end_retry_count = 0;
                 conflict_log('AGV%d action=bypass_overtake success', loser_id);
@@ -614,7 +647,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             end
         else
             conflict_log('BATCH AGV%d vs AGV%d classified=%s window=%s first_t=%g winner=AGV%d retreat=AGV%d', ...
-                rec.self_id, rec.blocker_id, conflict_name, rec.window_type, rec.first_conflict_t, winner_id, loser_id);
+                rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), rec.window_type, rec.first_conflict_t, winner_id, loser_id);
             if apply_safe_harbor_strategy(loser_id, winner_id, event_t, rec.first_conflict_t + max(1, AGVs(winner_id).step_dur))
                 % handled
             elseif replan_dynamic_target(loser_id, event_t)
@@ -1866,7 +1899,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         end
         if blocker_id > 0 && should_handle_window_conflict_now(id, event_t, window_conflict_info)
             conflict_log('AGV%d runtime_blocked_by_window blocker=AGV%d type=%s classified=%s first_t=%g pos=%s next=%s status=%s', ...
-                id, blocker_id, last_window_conflict.type, window_conflict_info.name, last_window_conflict.first_t, ...
+                id, blocker_id, last_window_conflict.type, conflict_type_cn(window_conflict_info.name), last_window_conflict.first_t, ...
                 node_str(AGVs(id).pos), node_str(AGVs(id).path(AGVs(id).path_idx, 1:2)), AGVs(id).status);
             status = -blocker_id;
             return;

@@ -157,5 +157,5 @@ function Final_Thesis_Simulation_Modular_python(external_task_list)
     disp('>> [4/4] 正在构建二维数字转向架组装线车间环境...');
     disp('>> 准备就绪！开始进行实时动态仿真动画...');
     pause(2);    
-    run_visualization_loop_time(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types);
+    run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types);
 end

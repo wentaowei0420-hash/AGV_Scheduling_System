@@ -400,5 +400,4 @@ def api_mes_outbox_retry(record_id):
 
 if __name__ == '__main__':
     print('MES 增强后端已启动，运行在 http://127.0.0.1:5000')
-    app.run(host='0.0.0.0', port=5000, debug=False)
-
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

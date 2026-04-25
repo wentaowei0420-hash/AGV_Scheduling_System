@@ -384,7 +384,10 @@ class SystemLogWindow(QDialog):
                 item = QTableWidgetItem("" if value is None else str(value))
                 if col_idx == 4:
                     text = str(value)
-                    color = "#B42318" if ("相向" in text or "对穿" in text) else "#9A6700" if ("占位" in text or "违停" in text) else "#1F5F8B"
+                    is_head_on = any(token in text for token in ("相向", "对穿", "Head-on"))
+                    is_occupied = any(token in text for token in ("占位", "违停", "Occupied"))
+                    is_rear_end = any(token in text for token in ("追尾", "Rear-end"))
+                    color = "#B42318" if is_head_on else "#9A6700" if is_occupied else "#1F5F8B" if is_rear_end else "#1F5F8B"
                     item.setForeground(QColor(color))
                     font = QFont()
                     font.setBold(True)

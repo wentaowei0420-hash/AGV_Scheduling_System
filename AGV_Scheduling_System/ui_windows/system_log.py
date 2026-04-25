@@ -279,9 +279,9 @@ class SystemLogWindow(QDialog):
 
                 # 【UI高亮美化】：根据不同的冲突类型赋予不同的颜色
                 type_item = QTableWidgetItem(type_str)
-                if "相向" in type_str or "对穿" in type_str:
+                if any(token in type_str for token in ("相向", "对穿", "Head-on")):
                     type_item.setForeground(QColor("#DC3545"))  # 红色 (最危险)
-                elif "违停" in type_str or "占位" in type_str:
+                elif any(token in type_str for token in ("违停", "占位", "Occupied")):
                     type_item.setForeground(QColor("#FFC107"))  # 橙色
                 else:
                     type_item.setForeground(QColor("#17A2B8"))  # 蓝色 (普通追尾/路口)

@@ -621,4 +621,4 @@ def api_logs_conflict_clear():
 
 if __name__ == '__main__':                                          # 如果直接运行此脚本（而不是被导入）
     print("后台引擎 API 服务已启动，运行在 http://127.0.0.1:5000")   # 打印启动信息
-    app.run(host='0.0.0.0', port=5000, debug=False)                 # 启动 Flask 开发服务器，监听所有网络接口，端口 5000，关闭调试模式
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)  # 启动 Flask 开发服务器，监听所有网络接口，端口 5000，关闭调试模式
