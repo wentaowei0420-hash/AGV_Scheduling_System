@@ -1,38 +1,65 @@
+%% ==================== 主算法仿真入口 ====================
 function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_schedule_optimizer_update_standard(task_list, num_agvs, depots, agv_params, ga_params, agv_types)
 % =========================================================================
-% 主函数：基于NSGA-II的多AGV任务调度优化器（支持托举式与叉车式AGV）
+% 主函数：基于 NSGA‑II 的多 AGV 任务调度优化器（支持托举式与叉车式 AGV）
 %         增强版本：引入约束违反处理、去重、移民、自适应交叉/变异等策略
 %
 % 输入参数：
-%   task_list     - N×3（或N×4）矩阵，每行 [任务ID, 目标区域ID, 负载重量, (可选)截止时间]
-%   num_agvs      - AGV总数
-%   depots        - AGV起始位置矩阵，每行对应一个AGV的 [行, 列] 坐标
-%   agv_params    - AGV参数结构体数组，包含 speed, e_base, e_load_factor 等字段
-%   ga_params     - 遗传算法参数结构体，包含 .pop_size (种群大小) 和 .max_gen (最大代数)
-%   agv_types     - AGV类型向量，1表示托举式AGV，2表示叉车式AGV
+%   task_list   - N×3 或 N×4 矩阵，每一行描述一个搬运任务：
+%                 第1列：任务ID（整数）
+%                 第2列：目标区域ID（整数，用于确定取/卸货位置）
+%                 第3列：负载重量（kg）
+%                 第4列（可选）：截止时间（deadline），超出即产生约束违反
+%   num_agvs    - AGV 总数
+%   depots      - AGV 起始位置矩阵，大小为 num_agvs×2，每行 [行坐标, 列坐标]
+%   agv_params  - AGV 参数结构体数组（长度 = num_agvs），包含以下典型字段：
+%                 .speed          ：行驶速度
+%                 .e_base         ：基础能耗系数（每单位距离）
+%                 .e_load_factor  ：负载附加能耗系数
+%                 .max_load_capacity 或 .load_capacity ：最大载重（可选）
+%   ga_params   - 遗传算法参数结构体，包含：
+%                 .pop_size ：种群大小
+%                 .max_gen  ：最大进化代数
+%   agv_types   - AGV 类型向量（长度 = num_agvs）：
+%                 1 表示托举式 AGV（需要组批，可一次搬运多个任务）
+%                 2 表示叉车式 AGV（单任务搬运）
 %
 % 输出参数：
-%   best_schedule - 1×num_agvs 的元胞数组，每个元素为对应AGV的任务执行顺序（任务ID向量）
-%   batch_details - 1×num_agvs 的元胞数组，每个元素为托举式AGV的批次信息结构体
-%   metrics       - 结构体，包含 .lift 和 .fork 的最终优化目标值 (dist, time, energy)
-%   history       - 结构体，包含每代Pareto前沿的目标最小值以及各代前沿面数据
-%   pareto_fronts - 结构体，包含 .lift 和 .fork 的最终第一前沿所有解的目标值矩阵
+%   best_schedule - 1×num_agvs 元胞数组，每个元素是对应 AGV 的任务执行序列（任务ID的行向量）
+%   batch_details - 1×num_agvs 元胞数组，仅对托举式 AGV 有效，每个元素是一个结构体，
+%                   包含字段：num_batches, task_batches, batch_weights
+%   metrics       - 结构体，包含 .lift 和 .fork 两个子结构，每个子结构又包含：
+%                   .dist   ：总行驶距离
+%                   .time   ：最大完工时间（makespan）
+%                   .energy ：总能耗
+%   history       - 结构体，记录整个进化过程中各代 Pareto 前沿的优化曲线：
+%                   .lift/.fork 均有：
+%                      .dist, .time, .energy : 1×max_gen 向量，每代前沿中各目标的最小值
+%                      .gen_fronts : 1×max_gen 元胞数组，每个元胞为当代第一前沿所有解的目标值（N×3 矩阵）
+%   pareto_fronts - 结构体，包含 .lift 和 .fork 的最终第一前沿解集的目标值矩阵
 % =========================================================================
 
-    % 构建区域距离Oracle（用于快速获取路径距离和候选点）
+    % -------------------------------------------------------------------------
+    % 第 1 部分：环境初始化 —— 构建区域距离 Oracle、划分任务与 AGV 类型
+    % -------------------------------------------------------------------------
     oracle_options = struct();
-    oracle_options.task_target_ids = unique(task_list(:, 2))';   % 所有出现的目标区域ID
-    oracle_options.agv_types = unique(agv_types)';               % 所有使用的AGV类型
+    % 提取任务中出现的所有目标区域 ID（用于预计算区域间距离）
+    oracle_options.task_target_ids = unique(task_list(:, 2))';
+    % 提取当前使用的所有 AGV 类型
+    oracle_options.agv_types = unique(agv_types)';
+    % 构建 Oracle，它会缓存常用区域之间的最优路径段，大幅加速后续评估
     path_oracle = region_distance_oracle('build', oracle_options);
 
-    % 按任务目标区域ID进行划分：ID ≤ 12 为托举任务，>12 为叉车任务
+    % 根据目标区域 ID 将任务分为两类：
+    %   ≤ 12 → 托举式 AGV 任务（通常为室内/轻型）
+    %   > 12 → 叉车式 AGV 任务（通常为室外/重型）
     idx_lift_tasks = task_list(:,2) <= 12;
     idx_fork_tasks = task_list(:,2) > 12;
     
     tasks_lift = task_list(idx_lift_tasks, :);
     tasks_fork = task_list(idx_fork_tasks, :);
     
-    % 获取不同类型AGV的ID列表
+    % 分别找出托举和叉车型 AGV 的索引列表
     agvs_lift = find(agv_types == 1); 
     agvs_fork = find(agv_types == 2); 
     
@@ -43,7 +70,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
     dist_lift = 0; time_lift = 0; energy_lift = 0;
     dist_fork = 0; time_fork = 0; energy_fork = 0;
     
-    % 历史记录初始化：每代Pareto前沿的目标最小值（距离、时间、能量）
+    % 初始化各代历史记录（每代为 Pareto 前沿中三个目标的“最小值”）
     hist_lift_dist = zeros(1, ga_params.max_gen);
     hist_lift_time = zeros(1, ga_params.max_gen);
     hist_lift_energy = zeros(1, ga_params.max_gen);
@@ -52,49 +79,50 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
     hist_fork_time = zeros(1, ga_params.max_gen);
     hist_fork_energy = zeros(1, ga_params.max_gen);
 
-    gen_fronts_lift = {};  
+    gen_fronts_lift = {};   % 存储托举每代第一前沿的全部目标值
     gen_fronts_fork = {};
     pareto_fronts = struct('lift', [], 'fork', []);
 
-    %% ==================== 托举式AGV优化 ====================
+    %% ==================== 托举式 AGV 优化 ====================
+    % 仅在存在托举任务和对应 AGV 时执行
     if ~isempty(tasks_lift) && ~isempty(agvs_lift)
         disp('   -> 启动 NSGA-II 引擎优化托举车 (多目标: 距离、时间、能耗)...');
         
-        % 定义托举AGV的多目标评估函数句柄
+        % 封装评估函数句柄，绑定当前任务、AGV 列表、停靠点和 Oracle
         eval_lift_moo = @(chrom) cost_func_lift_moo(chrom, tasks_lift, agvs_lift, depots, agv_params, path_oracle);
         
-        % 运行NSGA-II，返回种群、目标值、前沿面、拥挤距离及各代历史
+        % 运行托举子问题的 NSGA-II，返回最终种群、目标值、前沿面等
         [pop_lift, objs_lift, fronts_lift, ~, hist_lift_dist, hist_lift_time, hist_lift_energy, gen_fronts_lift] = ...
             run_sub_nsga2_lift(tasks_lift, length(agvs_lift), ga_params, eval_lift_moo);
         
-        % 获取第一前沿的个体索引及其目标值
+        % 提取第一前沿（Pareto 最优解集）
         front1_idx = fronts_lift{1}; 
         front1_objs = objs_lift(front1_idx, :);
         
-        % 计算第一前沿中每个个体的约束违反量
+        % 计算第一前沿中每个解的约束违反量（用于后续可行解优先选择）
         front1_violation = zeros(numel(front1_idx), 1);
         for ii = 1:numel(front1_idx)
             [~, ~, ~, front1_violation(ii)] = eval_lift_moo(pop_lift(front1_idx(ii), :));
         end
         
-        % 使用考虑约束的TOPSIS从第一前沿中选出妥协最优解
+        % 使用约束感知的妥协解选择：优先从可行解中挑选 TOPSIS 最优，若无可行解则选违反量最小的
         best_idx_in_front1 = select_feasible_compromise_index(front1_objs, front1_violation, @select_compromise_index);
         best_lift_chrom = pop_lift(front1_idx(best_idx_in_front1), :);
         
-        % 评估该最优解并获取详细调度方案与批次信息
+        % 最终评估所选染色体，得到调度方案、目标值及批次信息
         [sched_lift, best_objs_lift, batch_info_lift] = eval_lift_moo(best_lift_chrom);
         dist_lift = best_objs_lift(1);          
         time_lift = best_objs_lift(2);          
         energy_lift = best_objs_lift(3);        
         
-        % 将最优调度分配给对应的AGV
+        % 将最优调度结果分配给各托举 AGV
         for i = 1:length(agvs_lift)
             best_schedule{agvs_lift(i)} = sched_lift{i};
             batch_details{agvs_lift(i)} = batch_info_lift{i}; 
         end
     end 
     
-    %% ==================== 叉车式AGV优化 ====================
+    %% ==================== 叉车式 AGV 优化 ====================
     if ~isempty(tasks_fork) && ~isempty(agvs_fork)
         disp('   -> 启动 NSGA-II 引擎优化叉车 (多目标: 距离、时间、能耗)...');
         eval_fork_moo = @(chrom) cost_func_fork_moo(chrom, tasks_fork, agvs_fork, depots, agv_params, path_oracle);
@@ -102,7 +130,6 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
         [pop_fork, objs_fork, fronts_fork, ~, hist_fork_dist, hist_fork_time, hist_fork_energy, gen_fronts_fork] = ...
             run_sub_nsga2_fork(tasks_fork, length(agvs_fork), ga_params, eval_fork_moo);
         
-        % 获取第一前沿，计算约束违反量
         front1_idx = fronts_fork{1}; 
         front1_objs = objs_fork(front1_idx, :);
         front1_violation = zeros(numel(front1_idx), 1);
@@ -110,7 +137,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
             [~, ~, front1_violation(ii)] = eval_fork_moo(pop_fork(front1_idx(ii), :));
         end
         
-        % 优先选择可行解，若无可行解则选约束违反最小的解
+        % 叉车妥协选择策略略有不同：优先使用可行解，若无可行解则选违反最小的解
         feasible_idx = find(isfinite(front1_violation) & front1_violation <= 1e-9);
         if ~isempty(feasible_idx)
             local_idx = select_fork_compromise_index( ...
@@ -135,7 +162,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
         end
     end
     
-    %% ==================== 打包输出结果 ====================
+    %% ==================== 结果打包输出 ====================
     % 最终稳态指标
     metrics.lift.dist = dist_lift;       
     metrics.lift.time = time_lift;       
@@ -145,7 +172,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
     metrics.fork.time = time_fork;       
     metrics.fork.energy = energy_fork;   
     
-    % 算法迭代历史曲线
+    % 算法迭代历史曲线（每个目标在每代前沿中的最小值）
     history.lift.dist = hist_lift_dist;
     history.lift.time = hist_lift_time;
     history.lift.energy = hist_lift_energy;
@@ -156,7 +183,7 @@ function [best_schedule, batch_details, metrics, history, pareto_fronts] = ga_sc
     history.fork.energy = hist_fork_energy;
     history.fork.gen_fronts = gen_fronts_fork;
 
-    % 最终Pareto前沿（第一前沿的所有解）
+    % 最终 Pareto 前沿（第一前沿的全部解），用于外部分析或绘图
     if ~isempty(tasks_lift) && ~isempty(agvs_lift) && exist('objs_lift', 'var') && exist('fronts_lift', 'var') && ~isempty(fronts_lift)
         pareto_fronts.lift = objs_lift(fronts_lift{1}, :);
     end
@@ -177,6 +204,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
+    tool_eval_func = @(chromosome) eval_lift_moo_tool_adapter(eval_func, chromosome);
 
     % 初始化历史记录
     dist_hist = zeros(1, max_gen);
@@ -190,7 +218,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     gen_fronts_history = cell(1, max_gen); 
     max_obj_copies = 2;                     % 允许的相同目标值最大副本数（去重）
     stagnation_counter = 0;                 % 停滞计数器
-    last_signature = [];                    % 上一代第一前沿的特征签名
+    last_signature = [];  % 用于检测第一前沿是否连续停滞，驱动移民注入与强化扰动
     log_interval = max(1, ceil(max_gen / 20)); % 日志输出间隔
 
     %% 种群初始化
@@ -199,32 +227,27 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         pop(i, 1:num_tasks) = randperm(num_tasks);                 % 随机任务顺序
         pop(i, num_tasks+1:end) = randi([1, num_sub_agvs], 1, num_tasks); % 随机AGV分配
     end
-
     % 评估初始种群（包括约束违反量）
-    pop_objs = zeros(pop_size, 3);
-    pop_violation = zeros(pop_size, 1);
+    pop_objs = zeros(pop_size, 3);% 用于保存每个个体的三个优化目标。每一行对应一个调度方案，
+    pop_violation = zeros(pop_size, 1);% 用于保存每个个体的约束违反量，比如任务超出截止时间的总超时程度。
     for i = 1:pop_size
         [~, obj, ~, violation] = eval_func(pop(i,:));
         pop_violation(i) = violation;
         pop_objs(i,:) = obj;
     end
-
     % 约束感知的非支配排序与拥挤距离
     [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation);
-    last_signature = build_front_signature(pop_objs(fronts{1}, :));
-    
+    last_signature = build_front_signature(pop_objs(fronts{1}, :)); % 记录当前第一前沿的“指纹”，用于后续判断是否停滞。
+    cd = calc_crowding_distance(pop_objs, fronts);
     % 输出初始化日志
     log_nsga_start('EXPSTD-LIFT', num_tasks, num_sub_agvs, pop_size, max_gen, log_interval);
     log_lift_front_summary('EXPSTD-LIFT', 'init', 0, max_gen, pop_objs, fronts, fronts{1}, ...
-        struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
-    
-    cd = calc_crowding_distance(pop_objs, fronts);
-
+        struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));    
     %% 进化主循环
     for gen = 1:max_gen
         offspring = zeros(pop_size, num_tasks * 2);
 
-        % 基于rank和拥挤距离构建多目标排序索引，用于自适应变异决策
+        % 基于rank和拥挤距离构建多目标排序，用于自适应变异决策
         avg_rank = mean(rank);
         min_rank = min(rank);
         sort_criteria = [rank, -cd];
@@ -303,7 +326,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         prev_unique_front = count_unique_front_objs(pop_objs(fronts{1}, :));
         immigrants_count = determine_lift_immigrant_count(prev_unique_front, stagnation_counter, pop_size);
         if immigrants_count > 0
-            [immigrant_pop, immigrant_objs, immigrant_violation] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, eval_func);
+            [immigrant_pop, immigrant_objs, immigrant_violation] = generate_random_population_moo(immigrants_count, num_tasks, num_sub_agvs, tool_eval_func);
             combined_pop = [combined_pop; immigrant_pop];
             combined_objs = [combined_objs; immigrant_objs];
             combined_violation = [combined_violation; immigrant_violation];
@@ -339,9 +362,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         end
 
         % 双层去重：种群整体去重 + 第一前沿去重，确保目标空间多样性
-        [pop, pop_objs, pop_violation, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, pop_violation, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_sub_agvs, tool_eval_func, max_obj_copies);
         [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs, pop_violation);
-        [pop, pop_objs, pop_violation, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, pop_violation, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, fronts_tmp{1}, num_tasks, num_sub_agvs, tool_eval_func, max_obj_copies);
         replaced_count = replaced_count_all + replaced_count_front;
         
         % 重新计算新种群的非支配排序与拥挤距离
@@ -502,87 +525,6 @@ function [schedules, objectives, batch_info, constraint_violation] = cost_func_l
                     end
                 end
             end
-        end
-
-        agv_dists(k) = dist_sum;
-        agv_times(k) = time_spent;
-        agv_energy(k) = energy_spent;
-    end
-
-    objectives = [sum(agv_dists), max(agv_times), sum(agv_energy)];
-end
-
-%% ==================== 叉车式AGV评估函数 ====================
-function [schedules, objectives, constraint_violation] = cost_func_fork_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
-% 叉车式AGV的染色体解码与多目标评估（距离、时间、能耗 + 约束违反）
-% 叉车每次只处理一个任务（取货-送货），不需要批次组合
-
-    num_tasks = size(tasks, 1);
-    num_agvs = length(agv_ids);
-    task_seq = chromosome(1:num_tasks);
-    agv_assign = chromosome(num_tasks+1:end);
-
-    schedules = cell(1, num_agvs);
-    agv_dists = zeros(1, num_agvs);
-    agv_times = zeros(1, num_agvs);
-    agv_energy = zeros(1, num_agvs);
-
-    constraint_violation = 0;
-
-    for k = 1:num_agvs
-        real_agv_id = agv_ids(k);
-        curr_agv = agv_params(real_agv_id);
-        my_tasks = task_seq(agv_assign == k);
-
-        if isempty(my_tasks)
-            schedules{k} = [];
-            continue;
-        end
-
-        schedules{k} = tasks(my_tasks, 1)';
-        curr_pos = depots(real_agv_id, :);
-        dist_sum = 0;
-        time_spent = 0;
-        energy_spent = 0;
-        e_base = 1.0;
-        e_load_factor = 0.3;
-        if isfield(curr_agv, 'e_base'), e_base = curr_agv.e_base; end
-        if isfield(curr_agv, 'e_load_factor'), e_load_factor = curr_agv.e_load_factor; end
-        max_load_capacity = get_energy_capacity_by_agv_type(curr_agv, 2, 500);
-        speed = max(curr_agv.speed, 1e-6);
-
-        for t = 1:length(my_tasks)
-            row_idx = my_tasks(t);
-            target_id = tasks(row_idx, 2);
-            task_weight = tasks(row_idx, 3);
-
-            [pick_rc, d1, ~, feasible_pick] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 2, 0);
-            if ~feasible_pick
-                objectives = [inf, inf, inf];
-                constraint_violation = inf;
-                return;
-            end
-
-            [drop_rc, d2, ~, feasible_drop] = query_region_oracle_or_astar(path_oracle, pick_rc, target_id, 'dropoff', 2, task_weight);
-            if ~feasible_drop
-                objectives = [inf, inf, inf];
-                constraint_violation = inf;
-                return;
-            end
-
-            dist_sum = dist_sum + d1 + d2;
-            energy_spent = energy_spent + (d1 * e_base);
-            energy_spent = energy_spent + (d2 * (e_base + e_load_factor * (task_weight / max_load_capacity)));
-            time_spent = time_spent + (d1 + d2) / speed;
-            
-            % 截止时间约束
-            if size(tasks, 2) >= 4
-                deadline = tasks(row_idx, 4);
-                if isfinite(deadline) && ~isnan(deadline)
-                    constraint_violation = constraint_violation + max(0, time_spent - deadline);
-                end
-            end
-            curr_pos = drop_rc;
         end
 
         agv_dists(k) = dist_sum;
@@ -792,42 +734,88 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
 end
 
-%% ==================== 拥挤距离计算 ====================
-function cd = calc_crowding_distance(pop_objs, fronts)
-% 计算种群中每个个体的拥挤距离，用于保持解集的多样性
-    pop_size = size(pop_objs, 1);
-    num_objs = size(pop_objs, 2);
-    cd = zeros(pop_size, 1);
+%% ==================== 叉车式AGV评估函数 ====================
+function [schedules, objectives, constraint_violation] = cost_func_fork_moo(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
+% 叉车式AGV的染色体解码与多目标评估（距离、时间、能耗 + 约束违反）
+% 叉车每次只处理一个任务（取货-送货），不需要批次组合
 
-    for f = 1:length(fronts)
-        front = fronts{f};
-        l = length(front);
-        
-        if l <= 2
-            cd(front) = inf;
+    num_tasks = size(tasks, 1);
+    num_agvs = length(agv_ids);
+    task_seq = chromosome(1:num_tasks);
+    agv_assign = chromosome(num_tasks+1:end);
+
+    schedules = cell(1, num_agvs);
+    agv_dists = zeros(1, num_agvs);
+    agv_times = zeros(1, num_agvs);
+    agv_energy = zeros(1, num_agvs);
+
+    constraint_violation = 0;
+
+    for k = 1:num_agvs
+        real_agv_id = agv_ids(k);
+        curr_agv = agv_params(real_agv_id);
+        my_tasks = task_seq(agv_assign == k);
+
+        if isempty(my_tasks)
+            schedules{k} = [];
             continue;
         end
-        
-        for m = 1:num_objs
-            [sorted_objs, idx] = sort(pop_objs(front, m));
-            sorted_front = front(idx);
-            
-            cd(sorted_front(1)) = inf;
-            cd(sorted_front(end)) = inf;
-            
-            f_min = sorted_objs(1);
-            f_max = sorted_objs(end);
-            
-            if f_max - f_min == 0, continue; end
-            
-            for i = 2:l-1
-                cd(sorted_front(i)) = cd(sorted_front(i)) + (sorted_objs(i+1) - sorted_objs(i-1)) / (f_max - f_min);
-            end
-        end
-    end
-end
 
-%% ==================== 约束感知的锦标赛选择 ====================
+        schedules{k} = tasks(my_tasks, 1)';
+        curr_pos = depots(real_agv_id, :);
+        dist_sum = 0;
+        time_spent = 0;
+        energy_spent = 0;
+        e_base = 1.0;
+        e_load_factor = 0.3;
+        if isfield(curr_agv, 'e_base'), e_base = curr_agv.e_base; end
+        if isfield(curr_agv, 'e_load_factor'), e_load_factor = curr_agv.e_load_factor; end
+        max_load_capacity = get_energy_capacity_by_agv_type(curr_agv, 2, 500);
+        speed = max(curr_agv.speed, 1e-6);
+
+        for t = 1:length(my_tasks)
+            row_idx = my_tasks(t);
+            target_id = tasks(row_idx, 2);
+            task_weight = tasks(row_idx, 3);
+
+            [pick_rc, d1, ~, feasible_pick] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, 'pickup', 2, 0);
+            if ~feasible_pick
+                objectives = [inf, inf, inf];
+                constraint_violation = inf;
+                return;
+            end
+
+            [drop_rc, d2, ~, feasible_drop] = query_region_oracle_or_astar(path_oracle, pick_rc, target_id, 'dropoff', 2, task_weight);
+            if ~feasible_drop
+                objectives = [inf, inf, inf];
+                constraint_violation = inf;
+                return;
+            end
+
+            dist_sum = dist_sum + d1 + d2;
+            energy_spent = energy_spent + (d1 * e_base);
+            energy_spent = energy_spent + (d2 * (e_base + e_load_factor * (task_weight / max_load_capacity)));
+            time_spent = time_spent + (d1 + d2) / speed;
+            
+            % 截止时间约束
+            if size(tasks, 2) >= 4
+                deadline = tasks(row_idx, 4);
+                if isfinite(deadline) && ~isnan(deadline)
+                    constraint_violation = constraint_violation + max(0, time_spent - deadline);
+                end
+            end
+            curr_pos = drop_rc;
+        end
+
+        agv_dists(k) = dist_sum;
+        agv_times(k) = time_spent;
+        agv_energy(k) = energy_spent;
+    end
+
+    objectives = [sum(agv_dists), max(agv_times), sum(agv_energy)];
+end
+%% ==================== 选择-复制操作 ====================
+% ==================== 锦标赛选择 ====================
 function idx = tournament_select_nsga2(rank, cd, violation)
 % 增强锦标赛选择：优先选可行解，不可行解中选违反程度低的；
 % 若约束无差别，再按非支配等级和拥挤距离选择
@@ -867,7 +855,325 @@ function idx = tournament_select_nsga2(rank, cd, violation)
     end
 end
 
-%% ==================== 约束感知的快速非支配排序 ====================
+%% ==================== 交叉操作 ====================
+% ==================== 叉车强化交叉：跨AGV再分配 ====================
+function child = intensify_fork_cross_agv_reassignment(child, tasks, num_tasks, num_agvs, strength)
+% 通过将高负载AGV的任务转移到低负载AGV，并调整任务顺序，提升负载均衡
+    if nargin < 5
+        strength = 1;
+    end
+    if num_tasks < 2 || num_agvs < 2
+        return;
+    end
+
+    task_seq = child(1:num_tasks);
+    agv_assign = child(num_tasks+1:end);
+    task_weights = tasks(task_seq, 3);
+
+    for step = 1:max(1, strength)
+        task_counts = accumarray(agv_assign(:), 1, [num_agvs, 1], @sum, 0);
+        load_weights = accumarray(agv_assign(:), task_weights(:), [num_agvs, 1], @sum, 0);
+        [~, heavy_agv] = max(load_weights + 10 * task_counts);
+        [~, light_agv] = min(load_weights + 10 * task_counts);
+
+        load_gap = load_weights(heavy_agv) - load_weights(light_agv);
+        count_gap = task_counts(heavy_agv) - task_counts(light_agv);
+        if heavy_agv == light_agv || (load_gap < 10 && count_gap < 2)
+            break;
+        end
+
+        heavy_pos = find(agv_assign == heavy_agv);
+        light_pos = find(agv_assign == light_agv);
+        if isempty(heavy_pos)
+            break;
+        end
+
+        candidate_targets = tasks(task_seq(heavy_pos), 2);
+        light_targets = [];
+        if ~isempty(light_pos)
+            light_targets = tasks(task_seq(light_pos), 2);
+        end
+
+        % 优先转移与低负载车任务目的地相同的任务
+        candidate_scores = task_weights(heavy_pos);
+        if ~isempty(light_targets)
+            candidate_scores = candidate_scores + 12 * ismember(candidate_targets, light_targets);
+        end
+        if count_gap >= 3
+            candidate_scores = candidate_scores + 5;
+        end
+
+        [~, best_local_idx] = max(candidate_scores);
+        move_pos = heavy_pos(best_local_idx);
+        agv_assign(move_pos) = light_agv;
+
+        if ~isempty(light_pos)
+            insert_pos = light_pos(end) + 1;
+            [task_seq, agv_assign] = move_gene_pair(task_seq, agv_assign, move_pos, min(num_tasks, insert_pos));
+        end
+
+        task_weights = tasks(task_seq, 3);
+    end
+
+    child = [task_seq, agv_assign];
+end
+% ==================== 交叉算子 (IPOX-MPX) ====================
+function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
+% 基于IPOX和MPX的混合交叉算子
+    if num_tasks < 2
+        child1 = p1;
+        child2 = p2;
+        return;
+    end
+
+    child1 = zeros(1, num_tasks * 2);
+    child2 = zeros(1, num_tasks * 2);
+
+    seq1 = p1(1:num_tasks);
+    seq2 = p2(1:num_tasks);
+    agv1 = p1(num_tasks+1:end);
+    agv2 = p2(num_tasks+1:end);
+
+    points = sort(randperm(num_tasks, 2));
+    pt1 = points(1);
+    pt2 = points(2);
+    
+    c1_seq = zeros(1, num_tasks);
+    c2_seq = zeros(1, num_tasks);
+
+    c1_seq(pt1:pt2) = seq1(pt1:pt2);
+    c2_seq(pt1:pt2) = seq2(pt1:pt2);
+
+    empty_idx = [1:pt1-1, pt2+1:num_tasks];
+    
+    rem_seq2 = seq2(~ismember(seq2, c1_seq(pt1:pt2)));
+    rem_seq1 = seq1(~ismember(seq1, c2_seq(pt1:pt2)));
+    
+    c1_seq(empty_idx) = rem_seq2;
+    c2_seq(empty_idx) = rem_seq1;
+
+    M = randi([0, 1], 1, num_tasks);
+    
+    c1_agv = zeros(1, num_tasks);
+    c2_agv = zeros(1, num_tasks);
+
+    c1_agv(M == 0) = agv1(M == 0);
+    c2_agv(M == 0) = agv2(M == 0);
+    c1_agv(M == 1) = agv2(M == 1);
+    c2_agv(M == 1) = agv1(M == 1);
+
+    child1 = [c1_seq, c1_agv];
+    child2 = [c2_seq, c2_agv];
+end
+
+%% ==================== 变异操作 ====================
+% ==================== 自适应变异算子 (Fork-CPO) ====================
+function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_rank_idx, PN, eval_func)
+% 多策略自适应变异算子，根据父代排名和进化代数动态选择变异策略
+% 输入:
+%   chrom - 父代染色体 [1, 2*num_tasks]
+%   pm    - 基础变异概率 (用于最后的强制负载均衡)
+%   g, G  - 当前代数和最大代数
+%   parent_rank_idx - 父代在多目标排序中的排名 (1=最优)
+%   PN - 种群大小
+%   eval_func - 评估函数句柄，用于智能选择转移任务
+% 输出: 变异后的子代染色体
+
+    child = chrom;
+    if num_tasks < 2
+        return;
+    end
+
+    tau1 = rand();
+    tau2 = rand();
+    tau1_prime = tau1 - 0.3 * (1 - g/G);   % 随时间衰减的阈值
+
+    if tau1_prime < tau2
+        % ==================== 探索策略 (增加多样性) ====================
+        if parent_rank_idx > 0.6 * PN
+            % 1. 视觉防御：基因块翻转
+            range = sort(randperm(num_tasks, 2));
+            child(range(1):range(2)) = fliplr(child(range(1):range(2)));
+        else
+            % 2. 声音防御：跨车交换AGV指派
+            pos = randperm(num_tasks, 2);
+            agv_pos = pos + num_tasks;
+            ta = child(agv_pos(1));
+            child(agv_pos(1)) = child(agv_pos(2));
+            child(agv_pos(2)) = ta;
+        end
+    else
+        % ==================== 开发策略 (局部精调) ====================
+        if parent_rank_idx > 0.2 * PN
+            % 3. 气味防御：插入变异
+            pts = randperm(num_tasks, 2);
+            extract_idx = pts(1);
+            insert_idx = pts(2);
+            extracted_task = child(extract_idx);
+            extracted_agv = child(extract_idx + num_tasks);
+
+            child(extract_idx) = [];
+            child(extract_idx + num_tasks - 1) = [];
+
+            child = [child(1:insert_idx-1), extracted_task, child(insert_idx:num_tasks-1), ...
+                     child(num_tasks:num_tasks+insert_idx-2), extracted_agv, child(num_tasks+insert_idx-1:end)];
+        else
+            % 4. 物理攻击：瓶颈定向转移（精英个体）
+            agv_idx = (num_tasks + 1) : (2 * num_tasks);
+            current_agvs = child(agv_idx);
+            counts = histcounts(current_agvs, 1:num_agvs+1);
+            [~, max_agv] = max(counts);
+            [~, min_agv] = min(counts);
+            heavy_tasks_idx = find(current_agvs == max_agv);
+
+            if (counts(max_agv) - counts(min_agv)) >= 2 && ~isempty(heavy_tasks_idx)
+                % 评估各候选转移，选择能最大改善目标值的任务
+                transfer_idx = choose_best_fork_transfer(child, num_tasks, heavy_tasks_idx, min_agv, eval_func);
+                child(num_tasks + transfer_idx) = min_agv;
+            end
+        end
+    end
+
+    % ====== 强制负载均衡 (安全网) ======
+    if rand < (pm + 0.05)
+        agv_idx = (num_tasks + 1) : (2 * num_tasks);
+        current_agvs = child(agv_idx);
+        counts = zeros(1, num_agvs);
+        for k = 1:num_agvs
+            counts(k) = sum(current_agvs == k);
+        end
+        [max_val, max_agv] = max(counts);
+        [min_val, min_agv] = min(counts);
+        if (max_val - min_val) >= 2
+            heavy_tasks_idx = find(current_agvs == max_agv);
+            if ~isempty(heavy_tasks_idx)
+                transfer_idx = choose_best_fork_transfer(child, num_tasks, heavy_tasks_idx, min_agv, eval_func);
+                child(num_tasks + transfer_idx) = min_agv;
+            end
+        end
+    end
+end
+
+%% ==================== TOPSIS解的选取操作 ====================
+% ==================== 约束感知的妥协解选择 ====================
+function idx = select_feasible_compromise_index(front_objs, front_violation, compromise_selector)
+% 优先在可行解中选取TOPSIS妥协解；若无可行解，则在违反最小的解中选取
+    if isempty(front_objs)
+        idx = 1;
+        return;
+    end
+
+    if nargin < 3 || isempty(compromise_selector)
+        compromise_selector = @select_compromise_index;
+    end
+
+    tol = 1e-9;
+    feasible_idx = find(isfinite(front_violation) & front_violation <= tol);
+    if ~isempty(feasible_idx)
+        local_idx = compromise_selector(front_objs(feasible_idx, :));
+        idx = feasible_idx(local_idx);
+        return;
+    end
+
+    min_violation = min(front_violation);
+    candidate_idx = find(abs(front_violation - min_violation) <= tol);
+    local_idx = compromise_selector(front_objs(candidate_idx, :));
+    idx = candidate_idx(local_idx);
+end
+
+%% ==================== 数字化工具 ====================
+% ==================== 拥挤距离计算 ====================
+function cd = calc_crowding_distance(pop_objs, fronts)
+% 计算种群中每个个体的拥挤距离，用于保持解集的多样性
+    pop_size = size(pop_objs, 1);
+    num_objs = size(pop_objs, 2);
+    cd = zeros(pop_size, 1);
+
+    for f = 1:length(fronts)
+        front = fronts{f};
+        l = length(front);
+        
+        if l <= 2
+            cd(front) = inf;
+            continue;
+        end
+        
+        for m = 1:num_objs
+            [sorted_objs, idx] = sort(pop_objs(front, m));
+            sorted_front = front(idx);
+            
+            cd(sorted_front(1)) = inf;
+            cd(sorted_front(end)) = inf;
+            
+            f_min = sorted_objs(1);
+            f_max = sorted_objs(end);
+            
+            if f_max - f_min == 0, continue; end
+            
+            for i = 2:l-1
+                cd(sorted_front(i)) = cd(sorted_front(i)) + (sorted_objs(i+1) - sorted_objs(i-1)) / (f_max - f_min);
+            end
+        end
+    end
+end
+% ==================== 移动染色体中的任务顺序基因和 AGV 分配基因 ====================
+function [task_seq, agv_assign] = move_gene_pair(task_seq, agv_assign, from_idx, to_idx)
+% =========================================================================
+% 函数功能：
+%   将染色体编码中的一对基因（任务顺序基因 + 其对应的 AGV 分配基因）从
+%   当前位置 (from_idx) 移动到新位置 (to_idx)，并保持两个基因的对应关系
+%   不变。该操作用于调整任务的执行顺序和 AGV 分配，例如在强化交叉中将
+%   高负载 AGV 的任务转移到低负载 AGV 末尾时，同时移动该任务在序列中的位置。
+%
+% 输入参数：
+%   task_seq   - 任务顺序向量，长度为 num_tasks，元素为任务索引 (1..num_tasks)
+%   agv_assign - AGV 分配向量，长度与 task_seq 相同，元素为 AGV 编号
+%   from_idx   - 需要移动的基因对的当前位置（在向量中的索引）
+%   to_idx     - 目标插入位置（在移动完成后该基因对所处的索引位置）
+%
+% 输出参数：
+%   task_seq   - 移动后的任务顺序向量
+%   agv_assign - 移动后的 AGV 分配向量（与 task_seq 保持一一对应）
+% =========================================================================
+
+    % --- 边界条件检查：如果源位置等于目标位置，或源位置无效，则直接返回 ---
+    if from_idx == to_idx || from_idx < 1 || from_idx > numel(task_seq)
+        return;
+    end
+
+    % 将 to_idx 钳制在有效范围 [1, 当前向量长度] 内
+    to_idx = max(1, min(numel(task_seq), to_idx));
+
+    % --- 提取待移动的基因对 ---
+    moved_task = task_seq(from_idx);      % 提取任务顺序基因
+    moved_agv  = agv_assign(from_idx);    % 提取对应的 AGV 分配基因
+
+    % --- 从原向量中删除该基因对（两个向量同时删除相同位置） ---
+    task_seq(from_idx)   = [];
+    agv_assign(from_idx) = [];
+
+    % --- 修正目标索引（因为删除了一个元素，向量长度减 1）---
+    % 若原 from_idx < to_idx，则删除后 to_idx 对应的位置将前移一位
+    if from_idx < to_idx
+        to_idx = to_idx - 1;
+    end
+
+    % --- 将提取的基因对插入到新位置 ---
+    if to_idx <= 1
+        % 插入到向量最前面
+        task_seq   = [moved_task, task_seq];
+        agv_assign = [moved_agv,  agv_assign];
+    elseif to_idx > numel(task_seq)
+        % 插入到向量末尾
+        task_seq   = [task_seq,   moved_task];
+        agv_assign = [agv_assign, moved_agv];
+    else
+        % 插入到向量中间 to_idx 位置
+        task_seq   = [task_seq(1:to_idx-1),   moved_task, task_seq(to_idx:end)];
+        agv_assign = [agv_assign(1:to_idx-1), moved_agv,  agv_assign(to_idx:end)];
+    end
+end
+% ==================== 快速非支配排序 ====================
 function [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation)
 % 约束感知的非支配排序：支配关系判断时，首先基于约束违反，然后才是目标值
     pop_size = size(pop_objs, 1);
@@ -912,51 +1218,12 @@ function [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation)
     fronts(cellfun(@isempty, fronts)) = [];
 end
 
-%% ==================== TOPSIS妥协解选择 ====================
-function idx = select_compromise_index(front_objs)
-% 使用TOPSIS方法从Pareto前沿中选取最接近理想解的妥协解索引
-    if isempty(front_objs)
-        idx = 1;
-        return;
-    end
-
-    min_objs = min(front_objs, [], 1);
-    max_objs = max(front_objs, [], 1);
-    obj_norm = (front_objs - min_objs) ./ (max_objs - min_objs + 1e-9);
-    ideal_best = min(obj_norm, [], 1);
-    ideal_worst = max(obj_norm, [], 1);
-    d_best = sqrt(sum((obj_norm - ideal_best).^2, 2));
-    d_worst = sqrt(sum((obj_norm - ideal_worst).^2, 2));
-    closeness = d_worst ./ (d_best + d_worst + 1e-9);
-    [~, idx] = max(closeness);
+%% ==================== 算法适配工具 ====================
+function [schedules, objectives, constraint_violation] = eval_lift_moo_tool_adapter(eval_func, chromosome)
+% Adapt lift evaluation to the 3-output contract used by shared MOO tools.
+    [schedules, objectives, ~, constraint_violation] = eval_func(chromosome);
 end
-
-%% ==================== 约束感知的妥协解选择 ====================
-function idx = select_feasible_compromise_index(front_objs, front_violation, compromise_selector)
-% 优先在可行解中选取TOPSIS妥协解；若无可行解，则在违反最小的解中选取
-    if isempty(front_objs)
-        idx = 1;
-        return;
-    end
-
-    if nargin < 3 || isempty(compromise_selector)
-        compromise_selector = @select_compromise_index;
-    end
-
-    tol = 1e-9;
-    feasible_idx = find(isfinite(front_violation) & front_violation <= tol);
-    if ~isempty(feasible_idx)
-        local_idx = compromise_selector(front_objs(feasible_idx, :));
-        idx = feasible_idx(local_idx);
-        return;
-    end
-
-    min_violation = min(front_violation);
-    candidate_idx = find(abs(front_violation - min_violation) <= tol);
-    local_idx = compromise_selector(front_objs(candidate_idx, :));
-    idx = candidate_idx(local_idx);
-end
-%% ==================== 获取AGV最大载重容量 ====================
+% ==================== 获取AGV最大载重容量 ====================
 function capacity = get_energy_capacity_by_agv_type(curr_agv, agv_type, default_capacity)
 % 根据AGV类型和参数结构体获取最大负载容量
     if nargin < 3 || isempty(default_capacity)
@@ -981,8 +1248,7 @@ function capacity = get_energy_capacity_by_agv_type(curr_agv, agv_type, default_
         capacity = curr_agv.load_capacity;
     end
 end
-
-%% ==================== 路径查询与A*后备 ====================
+% ==================== 路径查询与A*后备 ====================
 function [best_rc, best_dist, best_cost, feasible] = query_region_oracle_or_astar(path_oracle, curr_pos, target_id, phase, agv_type, payload_weight)
 % 先尝试通过区域距离Oracle获取候选区域坐标和最优路径，若失败则回退到A*搜索
     best_rc = [];
@@ -1105,231 +1371,3 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
 
     [map_rows, map_cols] = size(cost_map);
 end
-
-%% ==================== 自适应变异算子 (Fork-CPO) ====================
-function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_rank_idx, PN, eval_func)
-% 多策略自适应变异算子，根据父代排名和进化代数动态选择变异策略
-% 输入:
-%   chrom - 父代染色体 [1, 2*num_tasks]
-%   pm    - 基础变异概率 (用于最后的强制负载均衡)
-%   g, G  - 当前代数和最大代数
-%   parent_rank_idx - 父代在多目标排序中的排名 (1=最优)
-%   PN - 种群大小
-%   eval_func - 评估函数句柄，用于智能选择转移任务
-% 输出: 变异后的子代染色体
-
-    child = chrom;
-    if num_tasks < 2
-        return;
-    end
-
-    tau1 = rand();
-    tau2 = rand();
-    tau1_prime = tau1 - 0.3 * (1 - g/G);   % 随时间衰减的阈值
-
-    if tau1_prime < tau2
-        % ==================== 探索策略 (增加多样性) ====================
-        if parent_rank_idx > 0.6 * PN
-            % 1. 视觉防御：基因块翻转
-            range = sort(randperm(num_tasks, 2));
-            child(range(1):range(2)) = fliplr(child(range(1):range(2)));
-        else
-            % 2. 声音防御：跨车交换AGV指派
-            pos = randperm(num_tasks, 2);
-            agv_pos = pos + num_tasks;
-            ta = child(agv_pos(1));
-            child(agv_pos(1)) = child(agv_pos(2));
-            child(agv_pos(2)) = ta;
-        end
-    else
-        % ==================== 开发策略 (局部精调) ====================
-        if parent_rank_idx > 0.2 * PN
-            % 3. 气味防御：插入变异
-            pts = randperm(num_tasks, 2);
-            extract_idx = pts(1);
-            insert_idx = pts(2);
-            extracted_task = child(extract_idx);
-            extracted_agv = child(extract_idx + num_tasks);
-
-            child(extract_idx) = [];
-            child(extract_idx + num_tasks - 1) = [];
-
-            child = [child(1:insert_idx-1), extracted_task, child(insert_idx:num_tasks-1), ...
-                     child(num_tasks:num_tasks+insert_idx-2), extracted_agv, child(num_tasks+insert_idx-1:end)];
-        else
-            % 4. 物理攻击：瓶颈定向转移（精英个体）
-            agv_idx = (num_tasks + 1) : (2 * num_tasks);
-            current_agvs = child(agv_idx);
-            counts = histcounts(current_agvs, 1:num_agvs+1);
-            [~, max_agv] = max(counts);
-            [~, min_agv] = min(counts);
-            heavy_tasks_idx = find(current_agvs == max_agv);
-
-            if (counts(max_agv) - counts(min_agv)) >= 2 && ~isempty(heavy_tasks_idx)
-                % 评估各候选转移，选择能最大改善目标值的任务
-                transfer_idx = choose_best_fork_transfer(child, num_tasks, heavy_tasks_idx, min_agv, eval_func);
-                child(num_tasks + transfer_idx) = min_agv;
-            end
-        end
-    end
-
-    % ====== 强制负载均衡 (安全网) ======
-    if rand < (pm + 0.05)
-        agv_idx = (num_tasks + 1) : (2 * num_tasks);
-        current_agvs = child(agv_idx);
-        counts = zeros(1, num_agvs);
-        for k = 1:num_agvs
-            counts(k) = sum(current_agvs == k);
-        end
-        [max_val, max_agv] = max(counts);
-        [min_val, min_agv] = min(counts);
-        if (max_val - min_val) >= 2
-            heavy_tasks_idx = find(current_agvs == max_agv);
-            if ~isempty(heavy_tasks_idx)
-                transfer_idx = choose_best_fork_transfer(child, num_tasks, heavy_tasks_idx, min_agv, eval_func);
-                child(num_tasks + transfer_idx) = min_agv;
-            end
-        end
-    end
-end
-
-%% ==================== 叉车强化交叉：跨AGV再分配 ====================
-function child = intensify_fork_cross_agv_reassignment(child, tasks, num_tasks, num_agvs, strength)
-% 通过将高负载AGV的任务转移到低负载AGV，并调整任务顺序，提升负载均衡
-    if nargin < 5
-        strength = 1;
-    end
-    if num_tasks < 2 || num_agvs < 2
-        return;
-    end
-
-    task_seq = child(1:num_tasks);
-    agv_assign = child(num_tasks+1:end);
-    task_weights = tasks(task_seq, 3);
-
-    for step = 1:max(1, strength)
-        task_counts = accumarray(agv_assign(:), 1, [num_agvs, 1], @sum, 0);
-        load_weights = accumarray(agv_assign(:), task_weights(:), [num_agvs, 1], @sum, 0);
-        [~, heavy_agv] = max(load_weights + 10 * task_counts);
-        [~, light_agv] = min(load_weights + 10 * task_counts);
-
-        load_gap = load_weights(heavy_agv) - load_weights(light_agv);
-        count_gap = task_counts(heavy_agv) - task_counts(light_agv);
-        if heavy_agv == light_agv || (load_gap < 10 && count_gap < 2)
-            break;
-        end
-
-        heavy_pos = find(agv_assign == heavy_agv);
-        light_pos = find(agv_assign == light_agv);
-        if isempty(heavy_pos)
-            break;
-        end
-
-        candidate_targets = tasks(task_seq(heavy_pos), 2);
-        light_targets = [];
-        if ~isempty(light_pos)
-            light_targets = tasks(task_seq(light_pos), 2);
-        end
-
-        % 优先转移与低负载车任务目的地相同的任务
-        candidate_scores = task_weights(heavy_pos);
-        if ~isempty(light_targets)
-            candidate_scores = candidate_scores + 12 * ismember(candidate_targets, light_targets);
-        end
-        if count_gap >= 3
-            candidate_scores = candidate_scores + 5;
-        end
-
-        [~, best_local_idx] = max(candidate_scores);
-        move_pos = heavy_pos(best_local_idx);
-        agv_assign(move_pos) = light_agv;
-
-        if ~isempty(light_pos)
-            insert_pos = light_pos(end) + 1;
-            [task_seq, agv_assign] = move_gene_pair(task_seq, agv_assign, move_pos, min(num_tasks, insert_pos));
-        end
-
-        task_weights = tasks(task_seq, 3);
-    end
-
-    child = [task_seq, agv_assign];
-end
-
-function [task_seq, agv_assign] = move_gene_pair(task_seq, agv_assign, from_idx, to_idx)
-% 将染色体指定位置的任务顺序基因和AGV分配基因同时移动
-    if from_idx == to_idx || from_idx < 1 || from_idx > numel(task_seq)
-        return;
-    end
-    to_idx = max(1, min(numel(task_seq), to_idx));
-
-    moved_task = task_seq(from_idx);
-    moved_agv = agv_assign(from_idx);
-
-    task_seq(from_idx) = [];
-    agv_assign(from_idx) = [];
-
-    if from_idx < to_idx
-        to_idx = to_idx - 1;
-    end
-
-    if to_idx <= 1
-        task_seq = [moved_task, task_seq];
-        agv_assign = [moved_agv, agv_assign];
-    elseif to_idx > numel(task_seq)
-        task_seq = [task_seq, moved_task];
-        agv_assign = [agv_assign, moved_agv];
-    else
-        task_seq = [task_seq(1:to_idx-1), moved_task, task_seq(to_idx:end)];
-        agv_assign = [agv_assign(1:to_idx-1), moved_agv, agv_assign(to_idx:end)];
-    end
-end
-
-%% ==================== 交叉算子 (IPOX-MPX) ====================
-function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
-% 基于IPOX和MPX的混合交叉算子
-    if num_tasks < 2
-        child1 = p1;
-        child2 = p2;
-        return;
-    end
-
-    child1 = zeros(1, num_tasks * 2);
-    child2 = zeros(1, num_tasks * 2);
-
-    seq1 = p1(1:num_tasks);
-    seq2 = p2(1:num_tasks);
-    agv1 = p1(num_tasks+1:end);
-    agv2 = p2(num_tasks+1:end);
-
-    points = sort(randperm(num_tasks, 2));
-    pt1 = points(1);
-    pt2 = points(2);
-    
-    c1_seq = zeros(1, num_tasks);
-    c2_seq = zeros(1, num_tasks);
-
-    c1_seq(pt1:pt2) = seq1(pt1:pt2);
-    c2_seq(pt1:pt2) = seq2(pt1:pt2);
-
-    empty_idx = [1:pt1-1, pt2+1:num_tasks];
-    
-    rem_seq2 = seq2(~ismember(seq2, c1_seq(pt1:pt2)));
-    rem_seq1 = seq1(~ismember(seq1, c2_seq(pt1:pt2)));
-    
-    c1_seq(empty_idx) = rem_seq2;
-    c2_seq(empty_idx) = rem_seq1;
-
-    M = randi([0, 1], 1, num_tasks);
-    
-    c1_agv = zeros(1, num_tasks);
-    c2_agv = zeros(1, num_tasks);
-
-    c1_agv(M == 0) = agv1(M == 0);
-    c2_agv(M == 0) = agv2(M == 0);
-    c1_agv(M == 1) = agv2(M == 1);
-    c2_agv(M == 1) = agv1(M == 1);
-
-    child1 = [c1_seq, c1_agv];
-    child2 = [c2_seq, c2_agv];
-end
-

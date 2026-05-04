@@ -49,7 +49,7 @@ function [best_schedule, batch_details, metrics, history,pareto_fronts] = ga_sch
         front1_objs = objs_lift(front1_idx, :);
         front1_violation = zeros(numel(front1_idx), 1);
         for ii = 1:numel(front1_idx)
-            [~, ~, front1_violation(ii)] = eval_lift_moo(pop_lift(front1_idx(ii), :));
+            [~, ~, ~, front1_violation(ii)] = eval_lift_moo(pop_lift(front1_idx(ii), :));
         end
 
         best_idx_in_front1 = select_feasible_compromise_index(front1_objs, front1_violation, @select_compromise_index);
@@ -134,6 +134,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     num_tasks = size(tasks, 1);
     pop_size = ga_params.pop_size;
     max_gen = ga_params.max_gen;
+    tool_eval_func = @(chromosome) eval_lift_moo_baseline_tool_adapter(eval_func, chromosome);
     
     % 适配三维目标历史记录
     dist_hist = zeros(1, max_gen);
@@ -156,7 +157,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     pop_objs = zeros(pop_size, 3);
     pop_violation = zeros(pop_size, 1);
     for i = 1:pop_size
-        [~, obj, violation] = eval_func(pop(i,:));
+        [~, obj, ~, violation] = eval_func(pop(i,:));
         pop_objs(i,:) = obj;
         pop_violation(i) = violation;
     end    
@@ -230,7 +231,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
         off_objs = zeros(pop_size, 3);
         off_violation = zeros(pop_size, 1);
         for i = 1:pop_size
-            [~, obj, violation] = eval_func(offspring(i,:));
+            [~, obj, ~, violation] = eval_func(offspring(i,:));
             off_objs(i,:) = obj;
             off_violation(i) = violation;
         end
@@ -246,7 +247,7 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             immigrant_objs = zeros(immigrants_count, 3);
             immigrant_violation = zeros(immigrants_count, 1);
             for ii = 1:immigrants_count
-                [~, obj, violation] = eval_func(immigrant_pop(ii, :));
+                [~, obj, ~, violation] = eval_func(immigrant_pop(ii, :));
                 immigrant_objs(ii, :) = obj;
                 immigrant_violation(ii) = violation;
             end
@@ -281,9 +282,9 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
             end
             f = f + 1;
         end
-        [pop, pop_objs, pop_violation, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, pop_violation, replaced_count_all] = reduce_population_duplicates_moo(pop, pop_objs, pop_violation, num_tasks, num_sub_agvs, tool_eval_func, max_obj_copies);
         [fronts_tmp, ~] = fast_non_dominated_sorting(pop_objs, pop_violation);
-        [pop, pop_objs, pop_violation, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, fronts_tmp{1}, num_tasks, num_sub_agvs, eval_func, max_obj_copies);
+        [pop, pop_objs, pop_violation, replaced_count_front] = reduce_front_duplicates_moo(pop, pop_objs, pop_violation, fronts_tmp{1}, num_tasks, num_sub_agvs, tool_eval_func, max_obj_copies);
         replaced_count = replaced_count_all + replaced_count_front;
         [fronts, rank] = fast_non_dominated_sorting(pop_objs, pop_violation);
         cd = calc_crowding_distance(pop_objs, fronts);
@@ -311,6 +312,11 @@ function [pop, pop_objs, fronts, cd, dist_hist, time_hist, energy_hist, gen_fron
     end
     log_lift_front_summary('BASESTD-LIFT', 'done', max_gen, max_gen, pop_objs, fronts, fronts{1}, ...
         struct('immigrants', 0, 'replaced', 0, 'stall', stagnation_counter));
+end
+
+function [schedules, objectives, constraint_violation] = eval_lift_moo_baseline_tool_adapter(eval_func, chromosome)
+% Adapt baseline lift evaluation to the 3-output contract used by duplicate tools.
+    [schedules, objectives, ~, constraint_violation] = eval_func(chromosome);
 end
 
 function [schedules, objectives, batch_info, constraint_violation] = cost_func_lift_moo_baseline(chromosome, tasks, agv_ids, depots, agv_params, path_oracle)
