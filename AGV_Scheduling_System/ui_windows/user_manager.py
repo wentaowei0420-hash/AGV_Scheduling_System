@@ -7,10 +7,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QTabWid
 from PyQt5.QtGui import QPixmap, QFont, QIcon, QColor, QPalette
 from PyQt5.QtCore import Qt
 
-
 class AddUserDialog(QDialog):
     """独立的弹窗：用于新增用户录入"""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("➕ 新增录入用户信息")
@@ -67,10 +65,8 @@ class AddUserDialog(QDialog):
         return {key: inp.text().strip() if isinstance(inp, QLineEdit) else inp.currentText()
                 for key, inp in self.inputs.items()}
 
-
 class UserManagerWindow(QDialog):
     """纯 API 驱动的用户信息管理窗口"""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("用户管理子系统")
@@ -242,10 +238,6 @@ class UserManagerWindow(QDialog):
         layout.addLayout(btn_layout)
 
         self.load_table_data()
-
-    # ============================================================================
-    # 核心改造：纯 API 网络请求方法
-    # ============================================================================
 
     def safe_request(self, method, endpoint, **kwargs):
         """统一的网络请求异常拦截器"""

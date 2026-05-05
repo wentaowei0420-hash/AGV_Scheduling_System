@@ -1,13 +1,9 @@
-import requests  # 导入 requests 库，用于发送 HTTP 请求
+import requests
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
                              QTableWidgetItem, QHeaderView, QFrame, QGridLayout, QLineEdit,
                              QSpinBox, QComboBox, QLabel, QMessageBox, QDoubleSpinBox)
-# 从 PyQt5 导入所需的控件类
-
-
 class AGVManagerWindow(QDialog):
-    """纯 API 驱动的 AGV设备管理窗口"""
-
+    # 初始化 AGV 管理窗口
     def __init__(self, parent=None):
         """构造函数：初始化窗口属性、API 地址和 UI，并加载数据"""
         super().__init__(parent)  # 调用父类 QDialog 的构造函数
@@ -17,7 +13,7 @@ class AGVManagerWindow(QDialog):
         self.current_agv_type = 1  # 当前显示的 AGV 类型：1 表示托举式，2 表示叉车式
         self.initUI()  # 调用初始化 UI 的方法
         self.load_data()  # 调用加载数据的方法，从 API 获取数据并显示
-
+    # 搭建 AGV 管理界面
     def initUI(self):
         """初始化用户界面：顶部类型切换按钮、中间表格、底部表单和操作按钮"""
         # 创建主垂直布局
@@ -146,7 +142,7 @@ class AGVManagerWindow(QDialog):
         main_layout.addLayout(action_layout)  # 将按钮布局添加到主布局
 
         self.clear_inputs()  # 清空输入框，设置为默认值
-
+    # 统一 API 请求函数。它负责发送 HTTP 请求
     def safe_request(self, method, endpoint, **kwargs):
         """统一的网络请求异常拦截器：发送 HTTP 请求，捕获异常并提示"""
         try:
@@ -157,7 +153,7 @@ class AGVManagerWindow(QDialog):
             # 如果发生任何异常（网络不通、超时、JSON 解析错误等），弹出错误对话框
             QMessageBox.critical(self, "网络异常", f"无法连接到后端服务器，请检查 API 是否开启！\n{e}")
             return None  # 返回 None
-
+    # 根据当前 AGV 类型加载设备表格
     def load_data(self):
         """[GET] 从 API 拉取表格数据，根据当前 AGV 类型刷新表格"""
         # 发送 GET 请求到 /list 端点，附带类型参数
@@ -185,7 +181,7 @@ class AGVManagerWindow(QDialog):
             self.table.setItem(row, 6, QTableWidgetItem(str(dev['e_base'])))          # 空载耗电
             self.table.setItem(row, 7, QTableWidgetItem(str(dev['e_load_factor'])))   # 负载耗电
             self.table.setItem(row, 8, QTableWidgetItem(type_str))                    # 设备类型
-
+    # 更新“初始车库”下拉框
     def update_garage_combobox(self, current_pos=None):
         """[GET] 从 API 拉取车库占用情况，刷新下拉列表，可选当前已占用的车库位置"""
         self.pos_input.clear()  # 清空下拉框所有选项
@@ -209,7 +205,7 @@ class AGVManagerWindow(QDialog):
         # 如果没有空闲车库，添加一个提示选项
         if self.pos_input.count() == 0:
             self.pos_input.addItem("暂无空闲车库", -1)
-
+    # 显示所有车库占用状态
     def show_garage_status(self):
         """[GET] 从 API 拉取全量占用数据并弹窗显示（HTML 格式）"""
         data = self.safe_request("GET", "/garages")  # 请求车库数据
@@ -243,7 +239,7 @@ class AGVManagerWindow(QDialog):
         msg_box.setText(html_content)
         msg_box.setStyleSheet("QLabel { min-width: 500px; }")
         msg_box.exec_()
-
+    # 新增 AGV 设备
     def add_agv(self):
         """[POST] 提交新增请求给 API"""
         agv_id = self.id_input.text().strip()  # 获取输入的 AGV 编号，去除首尾空格
@@ -279,7 +275,7 @@ class AGVManagerWindow(QDialog):
                 self.clear_inputs()   # 清空输入框
             else:
                 QMessageBox.warning(self, "错误", data.get("msg", "添加失败"))
-
+    # 保存修改。它用于修改已经存在的 AGV
     def update_agv(self):
         """[PUT] 提交修改请求给 API"""
         agv_id = self.id_input.text().strip()  # 获取当前输入的 AGV 编号
@@ -307,7 +303,7 @@ class AGVManagerWindow(QDialog):
         if data and data.get("status") == "success":
             QMessageBox.information(self, "成功", "AGV设备信息更新成功！配置已自动同步给底层。")
             self.load_data()
-
+    # 删除选中的 AGV
     def delete_agv(self):
         """[DELETE] 发送删除指令给 API"""
         selected_rows = self.table.selectedItems()  # 获取表格中选中的项
@@ -325,8 +321,8 @@ class AGVManagerWindow(QDialog):
                 QMessageBox.information(self, "成功", "设备已删除。")
                 self.load_data()      # 重新加载表格
                 self.clear_inputs()   # 清空输入框
-
     # --- 本地 UI 辅助控制函数（不涉及网络请求）---
+    # 切换 AGV 类型视图
     def switch_type(self, agv_type):
         """切换 AGV 类型并刷新界面"""
         self.current_agv_type = agv_type
@@ -338,7 +334,7 @@ class AGVManagerWindow(QDialog):
             self.btn_forklift.setStyleSheet(self.btn_style_active)
         self.clear_inputs()  # 清空输入框
         self.load_data()     # 重新加载对应类型的数据
-
+    # 当用户点击表格中的某一行时触发
     def on_table_select(self):
         """当表格中选中行变化时，将选中行的数据填充到表单中"""
         selected_rows = self.table.selectedItems()
@@ -361,7 +357,7 @@ class AGVManagerWindow(QDialog):
             self.id_input.setReadOnly(True)  # 编号设为只读，防止修改（因为编号是主键）
         else:
             self.clear_inputs()  # 如果没有选中行，清空输入框
-
+    # 清空底部表单，恢复默认值
     def clear_inputs(self):
         """清空所有输入控件，恢复默认值，并使编号可编辑"""
         self.id_input.clear()               # 清空编号输入框

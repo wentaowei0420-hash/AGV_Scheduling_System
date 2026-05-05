@@ -24,25 +24,24 @@ from ui_windows.system_log_mes import SystemLogWindow
 from ui_windows.task_manager import TaskManagerWindow
 from ui_windows.user_manager import UserManagerWindow
 
-
+# 用于自适应显示图片
 class AspectRatioLabel(QLabel):
-    """Support smooth aspect-ratio-preserving image scaling."""
-
+    # 初始化图片标签，设置最小尺寸和缩放策略。
     def __init__(self, text=""):
         super().__init__(text)
         self.original_pixmap = None
         self.setMinimumSize(1, 1)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-
+    # 接收原始图片
     def setPixmap(self, pixmap):
         self.original_pixmap = pixmap
         self.update_pixmap()
-
+    # 当窗口大小变化时自动触发，重新缩放图片。
     def resizeEvent(self, event):
         if self.original_pixmap is not None:
             self.update_pixmap()
         super().resizeEvent(event)
-
+    # 按照当前控件大小，对图片进行等比例缩放
     def update_pixmap(self):
         if self.original_pixmap and not self.original_pixmap.isNull():
             scaled_pixmap = self.original_pixmap.scaled(
@@ -51,14 +50,10 @@ class AspectRatioLabel(QLabel):
                 Qt.SmoothTransformation,
             )
             super().setPixmap(scaled_pixmap)
-
-
+# 用于后台请求工厂地图
 class MapFetchThread(QThread):
-    """Fetch the factory map from backend in a background thread."""
-
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bytes)
-
     def run(self):
         self.log_signal.emit("正在请求工厂地图，请稍候。")
         try:
@@ -71,10 +66,11 @@ class MapFetchThread(QThread):
         except Exception as exc:
             self.log_signal.emit(f"获取地图失败：{exc}")
 
-
 class MainWindow(QMainWindow):
     """工业风主控窗口，独立承载控制中心逻辑。"""
 
+    # <editor-fold desc="初始化与界面构建">
+    # 创建主窗口时自动执行
     def __init__(self):
         super().__init__()
         self.setWindowTitle("基于AGV的转向架组装生产线配件输送系统 - 控制中心")
@@ -87,7 +83,7 @@ class MainWindow(QMainWindow):
         self.initUI()
         self.setup_status_bar()
         self.check_backend_status()
-
+    # 搭建主界面布局
     def initUI(self):
         self.resize(1360, 840)
         self.setMinimumSize(1200, 760)
@@ -121,7 +117,7 @@ class MainWindow(QMainWindow):
             ("AGV 设备管理", self.open_agv_manager, "nav"),
             ("启动路径规划", self.run_matlab_planning, "primary"),
             ("用户信息管理", self.open_user_manager, "nav"),
-            ("刷新工厂地图", self.open_map_info_window, "nav"),
+            ("刷新工厂地图", self.fetch_factory_map, "nav"),
             ("系统日志中心", self.open_system_log, "nav"),
             ("状态监控", self.open_status_dashboard, "nav"),
             ("系统复位", self.dummy_action, "danger"),
@@ -250,7 +246,7 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(nav_panel)
         root_layout.addLayout(content_layout, 1)
-
+    # 创建顶部状态卡片
     def _create_status_card(self, parent_layout, title, value):
         card = QFrame()
         card.setObjectName("StatusCard")
@@ -265,7 +261,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(value_label)
         parent_layout.addWidget(card)
         return value_label
-
+    # </editor-fold>
+    #<editor-fold desc="状态栏与日志显示">
+    # 创建窗口底部状态栏
     def setup_status_bar(self):
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
@@ -278,10 +276,10 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.update_time)
         self.timer.start(1000)
         self.update_time()
-
+    # 更新时间显示
     def update_time(self):
         self.time_label.setText(QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss"))
-
+    # 向主界面的运行日志框追加日志
     def append_log(self, text):
         time_str = QDateTime.currentDateTime().toString("HH:mm:ss")
         level = "INFO"
@@ -305,7 +303,7 @@ class MainWindow(QMainWindow):
         self.log_output.verticalScrollBar().setValue(self.log_output.verticalScrollBar().maximum())
         if hasattr(self, "status_message"):
             self.status_message.setText(text if len(text) < 90 else text[:87] + "...")
-
+    # 更新顶部状态徽标的文字和颜色
     def _set_badge_state(self, widget, text, state):
         mapping = {
             "neutral": "BadgeNeutral",
@@ -319,7 +317,7 @@ class MainWindow(QMainWindow):
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
-
+    # 刷新首页摘要信息
     def _refresh_summary_snapshot(self):
         try:
             tasks_res = requests.get(f"{self.api_url}/tasks/list", params={"view_type": 0}, timeout=1)
@@ -342,29 +340,28 @@ class MainWindow(QMainWindow):
         except Exception:
             self.card_sync_value.setText("未连接")
             self.card_outbox_value.setText("--")
-
+    # </editor-fold>
+    #<editor-fold desc="打开子功能窗口">
+    # 打开系统日志中心窗口
     def open_system_log(self):
         self.sys_log_win = SystemLogWindow(self)
         self.sys_log_win.exec_()
-
+    # 打开任务管理窗口
     def open_task_manager(self):
         self.append_log("正在打开任务管理页面。")
         self.task_win = TaskManagerWindow(self)
         self.task_win.exec_()
-
+    # 打开 AGV 设备管理窗口
     def open_agv_manager(self):
         self.append_log("正在打开 AGV 设备管理页面。")
         self.agv_win = AGVManagerWindow(self)
         self.agv_win.exec_()
-
-    def open_map_info_window(self):
-        self.fetch_factory_map()
-
+    # 打开用户管理窗口
     def open_user_manager(self):
         self.append_log("正在打开用户信息管理页面。")
         self.user_win = UserManagerWindow(self)
         self.user_win.exec_()
-
+    # 打开状态监控窗口
     def open_status_dashboard(self):
         self.append_log("正在打开状态监控页面。")
         self.dashboard = StatusDashboardWindow(self)
@@ -373,7 +370,9 @@ class MainWindow(QMainWindow):
     def dummy_action(self):
         sender = self.sender()
         self.append_log(f"[{sender.text()}] 暂未启用。")
-
+    # </editor-fold>
+    #<editor-fold desc="后端通信与调度控制">
+    # 检查 Flask 后端是否在线
     def check_backend_status(self):
         try:
             res = requests.get(f"{self.api_url}/status", timeout=1)
@@ -399,7 +398,7 @@ class MainWindow(QMainWindow):
             self._set_badge_state(self.backend_badge, "后端离线", "danger")
             self._set_badge_state(self.scheduler_badge, "等待连接", "warning")
             self.append_log("未连接后台服务。")
-
+    # 启动路径规划
     def run_matlab_planning(self):
         self.append_log("发送路径规划指令。")
         try:
@@ -414,7 +413,7 @@ class MainWindow(QMainWindow):
                 self.append_log(f"请求被拒绝: {response.json().get('msg')}")
         except requests.exceptions.ConnectionError:
             self.append_log("无法连接后台服务。")
-
+    # 定时查询后端运行状态
     def poll_backend_status(self):
         try:
             res = requests.get(f"{self.api_url}/status", timeout=1)
@@ -485,13 +484,15 @@ class MainWindow(QMainWindow):
                 self.append_log(f"运行日志归档失败：{exc}")
 
         self.append_log("后台规划流程已结束。")
-
+    # </editor-fold>
+    #<editor-fold desc="地图刷新">
+    # 创建 MapFetchThread 后台线程，请求后端生成工厂地图
     def fetch_factory_map(self):
         self.map_thread = MapFetchThread()
         self.map_thread.log_signal.connect(self.append_log)
         self.map_thread.finished_signal.connect(self.display_downloaded_map)
         self.map_thread.start()
-
+    # 接收后端返回的 PNG 图片二进制数据，把它转换成 QPixmap，然后显示到主界面的地图区域。
     def display_downloaded_map(self, image_bytes):
         pixmap = QPixmap()
         pixmap.loadFromData(image_bytes)
@@ -499,3 +500,4 @@ class MainWindow(QMainWindow):
             "QLabel { background-color: #FFFFFF; border: 1px solid #D0D7DE; border-radius: 8px; }"
         )
         self.map_label.setPixmap(pixmap)
+    # </editor-fold>

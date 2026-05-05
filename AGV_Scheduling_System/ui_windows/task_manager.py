@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLay
 
 class TaskManagerWindow(QDialog):
     """纯 API 驱动的任务管理窗口 (MES 订单池)"""
-
+    # 窗口初始化函数
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("任务管理 (MES 订单池)")
@@ -17,7 +17,7 @@ class TaskManagerWindow(QDialog):
 
         self.initUI()
         self.load_data()
-
+    # 负责搭建任务管理界面
     def initUI(self):
         """UI布局代码保持不变，负责渲染界面"""
         main_layout = QVBoxLayout(self)
@@ -94,11 +94,7 @@ class TaskManagerWindow(QDialog):
         form_layout.addWidget(self.restore_btn)
 
         main_layout.addWidget(self.form_widget)
-
-    # ============================================================================
-    # 核心改造：纯 API 网络请求方法
-    # ============================================================================
-
+    # 这是统一的 API 请求函数
     def safe_request(self, method, endpoint, **kwargs):
         """统一的网络请求异常拦截器"""
         try:
@@ -108,7 +104,7 @@ class TaskManagerWindow(QDialog):
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "网络异常", f"无法连接到后端服务器，请检查 API 是否开启！\n{e}")
             return None
-
+    # 切换任务视图
     def switch_view(self, view_type):
         """切换视图并刷新样式"""
         self.current_task_view = view_type
@@ -119,7 +115,7 @@ class TaskManagerWindow(QDialog):
             self.btn_active_tasks.setStyleSheet(self.btn_style_inactive)
             self.btn_completed_tasks.setStyleSheet(self.btn_style_active)
         self.load_data()
-
+    # 从后端加载任务列表
     def load_data(self):
         """[GET] 从 API 根据当前视图加载任务数据"""
         self.table.setRowCount(0)
@@ -151,7 +147,7 @@ class TaskManagerWindow(QDialog):
             self.table.setItem(row_idx, 7, QTableWidgetItem(duration))
             self.table.setItem(row_idx, 8, QTableWidgetItem(distance))
             self.table.setItem(row_idx, 9, QTableWidgetItem(create_time))
-
+    # 新增任务
     def add_task(self):
         """[POST] 向 API 发送新增任务请求"""
         station = self.station_input.value()
@@ -176,7 +172,7 @@ class TaskManagerWindow(QDialog):
                 self.load_data()
         else:
             QMessageBox.warning(self, "错误", res.get("msg", "任务添加失败！") if res else "请求无响应")
-
+    # 删除选中的任务
     def delete_task(self):
         """[DELETE] 向 API 发送删除指定任务请求"""
         selected_rows = self.table.selectedItems()
@@ -200,7 +196,7 @@ class TaskManagerWindow(QDialog):
             if res and res.get("status") == "success":
                 self.load_data()
                 QMessageBox.information(self, "成功", "任务已删除。")
-
+    # 一键恢复所有已完成任务
     def restore_all_completed(self):
         """[POST] 通知 API 一键复原所有历史任务"""
         reply = QMessageBox.question(self, '确认复原',

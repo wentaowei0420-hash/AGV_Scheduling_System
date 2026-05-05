@@ -1,6 +1,4 @@
 import pymysql
-
-
 class DatabaseManager:
     def __init__(self):
         # 请根据您本地的 MySQL 实际情况修改以下参数

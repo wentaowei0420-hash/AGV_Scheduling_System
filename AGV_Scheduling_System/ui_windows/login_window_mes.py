@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QMainWindow,
     QPushButton,
     QStatusBar,
     QVBoxLayout,
@@ -13,11 +14,16 @@ from PyQt5.QtWidgets import (
 )
 
 from db_manager import DatabaseManager
-from ui_windows.login_window import LoginWindow as BaseLoginWindow
 from ui_windows.main_window_mes import MainWindow
 
 
-class LoginWindow(BaseLoginWindow):
+class LoginWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("基于AGV的转向架组装生产线配件输送系统 - 登录")
+        self.initUI()
+        self.setup_status_bar()
+
     def initUI(self):
         self.resize(980, 620)
         central_widget = QWidget()

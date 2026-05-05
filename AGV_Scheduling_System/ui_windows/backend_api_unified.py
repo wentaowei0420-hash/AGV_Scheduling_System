@@ -4,17 +4,11 @@ import io
 import os
 import json
 from datetime import datetime
-
 import matlab.engine
-
 from db_manager import DatabaseManager
-
-
 app = Flask(__name__)
-
 sim_state = {"status": "idle", "logs": [], "progress": 0}
 MES_SIMULATION_MODE = True
-
 # 基础工具函数
 def safe_json_dumps(payload):
     """
@@ -490,10 +484,7 @@ def run_simulation_task():
 
     try:
         # 从 mes_orders 表中查询状态为 0（待分配）的订单，按 order_id 升序排列
-        orders = db.execute_query(
-            "SELECT order_id, target_station, weight, deadline FROM mes_orders WHERE status = 0 ORDER BY order_id ASC"
-        )
-
+        orders = db.execute_query("SELECT order_id, target_station, weight, deadline FROM mes_orders WHERE status = 0 ORDER BY order_id ASC")
         # 如果没有待执行任务，则记录日志并直接结束
         if not orders:
             sim_state["logs"].append("系统提示：数据库中没有待执行的任务。")
@@ -650,8 +641,7 @@ def api_generate_map():
     finally:
         if eng is not None:
             eng.quit()
-
-# AGV 管理路由
+# <editor-fold desc="AGV 管理路由">
 @app.route('/api/agv/list', methods=['GET'])
 def api_agv_list():
     agv_type = request.args.get('type')
@@ -697,8 +687,8 @@ def api_agv_delete(agv_id):
         auto_generate_matlab_config()
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "msg": "数据库删除失败"})
-
-# 任务管理路由
+# </editor-fold>
+# <editor-fold desc="任务管理路由">
 @app.route('/api/tasks/list', methods=['GET'])
 def api_tasks_list():
     view_type = request.args.get('view_type', type=int, default=0)
@@ -728,13 +718,13 @@ def api_tasks_delete(order_id):
 def api_tasks_restore():
     rows = DatabaseManager().execute_update("UPDATE mes_orders SET status = 0, executor_agv = NULL, actual_time = NULL, actual_distance = NULL WHERE status = 2")
     return jsonify({"status": "success", "rows": rows}) if rows else jsonify({"status": "info", "msg": "当前没有已完成任务需要复原。"})
-
+# </editor-fold>
+# <editor-fold desc="用户管理路由">
 @app.route('/api/users/list', methods=['GET'])
 def api_users_list():
     records = DatabaseManager().execute_query("SELECT emp_id, name, gender, job_type, phone, email FROM sys_users ORDER BY emp_id ASC")
     return jsonify({"status": "success", "data": records if records else []})
 
-# 用户管理路由
 @app.route('/api/users/query', methods=['GET'])
 def api_users_query():
     keyword = request.args.get('keyword', '')
@@ -765,7 +755,7 @@ def api_users_update():
 @app.route('/api/users/delete/<emp_id>', methods=['DELETE'])
 def api_users_delete(emp_id):
     return jsonify({"status": "success"}) if DatabaseManager().execute_update("DELETE FROM sys_users WHERE emp_id = %s", (emp_id,)) else jsonify({"status": "error", "msg": "数据库删除失败"})
-
+# </editor-fold>
 # MATLAB 回调与日志路由
 @app.route('/api/logs/comm/parse', methods=['POST'])
 def api_logs_comm_parse():
