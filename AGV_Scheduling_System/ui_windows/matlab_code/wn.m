@@ -48,17 +48,14 @@ set(gca, 'XDir', 'reverse'); % X轴反向：模拟车辆从远到近靠近目标
 % 动态调整 X 轴显示范围（留出一点边缘空白，不要顶格）
 xlim([0, ceil(dist_start_to_goal/10)*10]); 
 ylim([0.8, max(w_n) + 0.1]);
-
-% 字体与标签规范化（中英文字体分离）
-xlabel('当前节点距离目标的距离 D (m)', 'FontSize', 11, 'FontName', 'SimSun');
-ylabel('启发函数权重系数 w(n)', 'FontSize', 11, 'FontName', 'SimSun');
-
 % 坐标轴刻度字体设置
 ax = gca;
 ax.FontSize = 11;
 ax.FontName = 'Times New Roman'; 
 ax.LineWidth = 1;
-
+% 字体与标签规范化（中英文字体分离）
+xlabel('当前节点距离目标的距离 D (m)', 'FontSize', 11, 'FontName', 'SimSun');
+ylabel('启发函数权重系数 w(n)', 'FontSize', 11, 'FontName', 'SimSun');
 % 图例修饰
 lgd = legend('Location', 'northwest');
 lgd.FontSize = 10;

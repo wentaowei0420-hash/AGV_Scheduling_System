@@ -1,15 +1,15 @@
-function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
-    %% 仿真初始化
+function run_visualization_loop_event_sm_version(num_agvs, depots, agv_schedules, task_list, agv_params, agv_types)
+    %% 仿真初始化 
     % 获取统一绘图主题样式，例如字体、字号、线宽、网格样式等
-    style = agv_plot_theme();
+    style = agv_plot_theme();    
     % 将绘图主题应用到 MATLAB 全局默认绘图参数中
     % 后续创建的 figure、axes、text、legend 等都会默认使用该样式
     init_agv_plot_defaults(style);
-    global mapW mapH;
+    global mapW mapH;    
     % 声明全局静态代价地图
     % costmap_type1: 托举式 AGV 使用的代价地图、costmap_type2: 叉车式 AGV 使用的代价地图
-    global costmap_type1 costmap_type2;
-    generate_beautiful_factory_map();
+    global costmap_type1 costmap_type2; 
+    generate_beautiful_factory_map(); 
     % 初始化异构 AGV 静态代价地图、该函数会基于障碍物距离生成两类代价场、托举车代价图 costmap_type1、叉车代价图 costmap_type2
     init_global_costmaps();
     f_map = gcf;
@@ -20,7 +20,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         'NumberTitle', 'off', ...                                % 不显示 Figure 编号
         'MenuBar', 'none', ...                                   % 隐藏菜单栏
         'ToolBar', 'none', ...                                   % 隐藏工具栏
-        'Position', [50, 200, 1000, 700]);                       % 设置窗口位置和大小
+        'Position', [50, 200, 1000, 700]);                       % 设置窗口位置和大小     
     % 初始化电量监控窗口
     [f_batt, b_handle, t_handles] = init_battery_monitor(num_agvs);
     % 初始化 AGV 结构体数组和图形对象
@@ -33,48 +33,48 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
     % Loading / Unloading / Charging / Waiting_Clearance -> handle_waiting_state
     state_defs = build_state_definitions();
     % 输出提示信息，说明事件驱动状态机仿真正式启动
-    disp('>> [System] Event-driven state-machine simulation started.');
+    disp('>> [System] Event-driven state-machine simulation started.');    
     % 滑动时间窗预测步长
-    reservation_horizon_steps = 6;
+    reservation_horizon_steps = 6;    
     % 最大出发等待步数
     max_departure_wait_steps = 4;
     % 初始化预约缓存结构体
     % reservation_cache 用于保存滑动时间窗中的节点预约和边预约
-    reservation_cache = struct();
+    reservation_cache = struct();  
     % 节点预约表
-    reservation_cache.node = containers.Map('KeyType', 'char', 'ValueType', 'double');
+    reservation_cache.node = containers.Map('KeyType', 'char', 'ValueType', 'double');   
     % 边预约表
-    reservation_cache.edge = containers.Map('KeyType', 'char', 'ValueType', 'double');
+    reservation_cache.edge = containers.Map('KeyType', 'char', 'ValueType', 'double');   
     % 记录预约缓存构建的时间、初始设为 -inf，表示尚未构建过
-    reservation_cache.built_at = -inf;
+    reservation_cache.built_at = -inf;   
     % 标记预约表是否需要重建、 true 表示当前缓存不可直接复用，需要根据 AGV 最新状态重新生成
-    reservation_dirty = true;
+    reservation_dirty = true; 
     % 记录最近一次滑动时间窗冲突
     last_window_conflict = struct( ...
         'self_id', 0, ...
         'blocker_id', 0, ...
         'type', 'none', ...
         'first_t', -inf, ...
-        'node', []);
+        'node', []);   
     % 记录最近一次运行时即时冲突
     last_runtime_conflict = struct( ...
         'self_id', 0, ...
         'blocker_id', 0, ...
         'reason', 'none', ...
         'event_t', -inf, ...
-        'node', []);
+        'node', []);   
     % 是否输出详细冲突调试日志、true 表示会打印 [Conflict][t=...] 形式的调试信息
-    debug_conflict_log = true;
+    debug_conflict_log = true;  
     % 等待放行状态的超时时间
-    wait_clearance_timeout = max(10, reservation_horizon_steps * 3);
+    wait_clearance_timeout = max(10, reservation_horizon_steps * 3);    
     % 等待放行最大重试次数
-    wait_clearance_retry_limit = 4;
+    wait_clearance_retry_limit = 4; 
     % 构建安全港节点集合：safe harbor 是供 AGV 临时避让、停车等待的安全节点
     safe_harbor_nodes = build_safe_harbor_nodes();
     % 停滞检测阈值：如果系统长时间没有实质进展，会打印 stall 观察日志，这里至少为 8，同时与滑动时间窗长度相关
     stall_detect_threshold = max(8, reservation_horizon_steps * 2);
     % 即将发生冲突的时间窗缓冲步数：用于判断窗口冲突是否已经足够接近，是否需要立即处理
-    imminent_window_buffer_steps = 2;
+    imminent_window_buffer_steps = 2;    
     % 重复等待触发重规划的阈值
     repeat_wait_replan_threshold = 2;
     % 重复等待模式的记忆时间范围：用于判断"这是不是刚刚发生过的重复等待"，取等待超时时间和时间窗长度相关值中的较大者
@@ -208,13 +208,6 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         AGVs(id).next_event_t = event_t + max(0, delta);
         reservation_dirty = true;
     end
-    function schedule_after_segmented_success(id, event_t)
-        if isfinite(AGVs(id).next_event_t) && AGVs(id).next_event_t > event_t
-            reservation_dirty = true;
-            return;
-        end
-        schedule_in(id, event_t, AGVs(id).step_dur);
-    end
     % 将 AGV 的下一事件设为 Inf，表示暂时无事件
     function deactivate(id)
         AGVs(id).next_event_t = inf;
@@ -265,7 +258,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         % 到达目标：调用 handle_arrival
         if move_status == 1
             handle_arrival(id, event_t);
-        % 发生冲突：调用 resolve_conflict
+        % 发生冲突：调用 resolve_conflict   
         elseif move_status < 0
             resolve_conflict(id, -move_status, task_list, event_t);
             if AGVs(id).next_event_t == inf
@@ -1347,21 +1340,18 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
                 id_self, id_blocker, conflict_type_cn(conflict_info.name), node_str(conflict_info.conflict_node), winner_id, loser_id);
             if apply_wait_then_replan_strategy(loser_id, winner_id, conflict_info, event_t)
                 % handled
-            elseif plan_segmented_avoid_path(loser_id, winner_id, conflict_info.conflict_node, event_t, 'node')
-                conflict_log('AGV%d fallback action=segmented_avoid node=%s target=%s', ...
-                    loser_id, node_str(conflict_info.conflict_node), node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
+            elseif plan_yield_path(loser_id, winner_id, event_t)
+                conflict_log('AGV%d fallback action=yield_path', loser_id);
+                AGVs(loser_id).yield_resume_status = AGVs(loser_id).status;
+                transition_to(loser_id, 'Yielding');
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
                 apply_wait_only_strategy(loser_id, winner_id, event_t, 'node_contention_force_graph');
             end
         elseif strcmp(conflict_info.name, 'Occupied node')
             conflict_log('AGV%d vs AGV%d classified=%s blocker_pos=%s actor=AGV%d -> replan dynamic target', ...
                 id_self, id_blocker, conflict_type_cn(conflict_info.name), node_str(AGVs(winner_id).pos), loser_id);
-            if plan_segmented_avoid_path(loser_id, winner_id, conflict_info.conflict_node, event_t, 'occupied')
-                conflict_log('AGV%d action=segmented_avoid occupied_node=%s target=%s', ...
-                    loser_id, node_str(conflict_info.conflict_node), node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
-            elseif replan_dynamic_target(loser_id, event_t)
+            if replan_dynamic_target(loser_id, event_t)
                 conflict_log('AGV%d action=replan_dynamic_target success target=%s', loser_id, node_str(AGVs(loser_id).target_node));
                 schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
@@ -1377,11 +1367,15 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         elseif strcmp(conflict_info.name, 'Rear-end')
             conflict_log('AGV%d vs AGV%d classified=%s overtaker=AGV%d leader=AGV%d -> bypass/overtake', ...
                 id_self, id_blocker, conflict_type_cn(conflict_info.name), loser_id, winner_id);
-            if plan_segmented_avoid_path(loser_id, winner_id, conflict_info.conflict_node, event_t, 'rear_end')
+            if plan_bypass_path(loser_id, winner_id, event_t)
                 AGVs(loser_id).rear_end_retry_count = 0;
-                conflict_log('AGV%d action=segmented_rear_end_avoid success target=%s', ...
-                    loser_id, node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
+                conflict_log('AGV%d action=bypass_overtake success', loser_id);
+                transition_to(loser_id, 'Yielding');
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
+            elseif plan_rear_end_escape(loser_id, winner_id, event_t)
+                AGVs(loser_id).rear_end_retry_count = 0;
+                conflict_log('AGV%d action=replan_rear_end_escape success target=%s', loser_id, node_str(AGVs(loser_id).target_node));
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
                 AGVs(loser_id).rear_end_retry_count = AGVs(loser_id).rear_end_retry_count + 1;
                 if AGVs(loser_id).rear_end_retry_count >= 3 && ...
@@ -1398,12 +1392,13 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
                 id_self, id_blocker, conflict_type_cn(conflict_info.name), winner_id, loser_id);
             if apply_safe_harbor_strategy(loser_id, winner_id, event_t, conflict_info.conflict_t + max(1, AGVs(winner_id).step_dur))
                 % handled
-            elseif plan_segmented_avoid_path(loser_id, winner_id, conflict_info.conflict_node, event_t, 'head_on')
-                conflict_log('AGV%d fallback action=segmented_avoid conflict_node=%s target=%s', ...
-                    loser_id, node_str(conflict_info.conflict_node), node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
             elseif replan_dynamic_target(loser_id, event_t)
                 conflict_log('AGV%d fallback action=replan_dynamic_target target=%s', loser_id, node_str(AGVs(loser_id).target_node));
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
+            elseif plan_yield_path(loser_id, winner_id, event_t)
+                conflict_log('AGV%d fallback action=yield_path', loser_id);
+                AGVs(loser_id).yield_resume_status = AGVs(loser_id).status;
+                transition_to(loser_id, 'Yielding');
                 schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
                 apply_wait_only_strategy(loser_id, winner_id, event_t, 'fallback');
@@ -1433,21 +1428,18 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
                 rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), node_str(rec.conflict_node), rec.window_type, rec.first_conflict_t, winner_id, loser_id);
             if apply_wait_then_replan_strategy(loser_id, winner_id, conflict_info, event_t)
                 % handled
-            elseif plan_segmented_avoid_path(loser_id, winner_id, rec.conflict_node, event_t, 'node')
-                conflict_log('AGV%d fallback action=segmented_avoid node=%s target=%s', ...
-                    loser_id, node_str(rec.conflict_node), node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
+            elseif plan_yield_path(loser_id, winner_id, event_t)
+                conflict_log('AGV%d fallback action=yield_path', loser_id);
+                AGVs(loser_id).yield_resume_status = AGVs(loser_id).status;
+                transition_to(loser_id, 'Yielding');
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
                 apply_wait_only_strategy(loser_id, winner_id, event_t, 'batch_node_contention_force_graph');
             end
         elseif strcmp(conflict_name, 'Occupied node')
             conflict_log('BATCH AGV%d vs AGV%d classified=%s blocker_pos=%s window=%s first_t=%g actor=AGV%d -> replan dynamic target', ...
                 rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), node_str(AGVs(winner_id).pos), rec.window_type, rec.first_conflict_t, loser_id);
-            if plan_segmented_avoid_path(loser_id, winner_id, rec.conflict_node, event_t, 'occupied')
-                conflict_log('AGV%d action=segmented_avoid occupied_node=%s target=%s', ...
-                    loser_id, node_str(rec.conflict_node), node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
-            elseif replan_dynamic_target(loser_id, event_t)
+            if replan_dynamic_target(loser_id, event_t)
                 conflict_log('AGV%d action=replan_dynamic_target success target=%s', loser_id, node_str(AGVs(loser_id).target_node));
                 schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
@@ -1463,11 +1455,15 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         elseif strcmp(conflict_name, 'Rear-end')
             conflict_log('BATCH AGV%d vs AGV%d classified=%s window=%s first_t=%g overtaker=AGV%d leader=AGV%d', ...
                 rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), rec.window_type, rec.first_conflict_t, loser_id, winner_id);
-            if plan_segmented_avoid_path(loser_id, winner_id, rec.conflict_node, event_t, 'rear_end')
+            if plan_bypass_path(loser_id, winner_id, event_t)
                 AGVs(loser_id).rear_end_retry_count = 0;
-                conflict_log('AGV%d action=segmented_rear_end_avoid success target=%s', ...
-                    loser_id, node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
+                conflict_log('AGV%d action=bypass_overtake success', loser_id);
+                transition_to(loser_id, 'Yielding');
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
+            elseif plan_rear_end_escape(loser_id, winner_id, event_t)
+                AGVs(loser_id).rear_end_retry_count = 0;
+                conflict_log('AGV%d action=replan_rear_end_escape success target=%s', loser_id, node_str(AGVs(loser_id).target_node));
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
                 AGVs(loser_id).rear_end_retry_count = AGVs(loser_id).rear_end_retry_count + 1;
                 if AGVs(loser_id).rear_end_retry_count >= 3 && ...
@@ -1484,12 +1480,13 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
                 rec.self_id, rec.blocker_id, conflict_type_cn(conflict_name), rec.window_type, rec.first_conflict_t, winner_id, loser_id);
             if apply_safe_harbor_strategy(loser_id, winner_id, event_t, rec.first_conflict_t + max(1, AGVs(winner_id).step_dur))
                 % handled
-            elseif plan_segmented_avoid_path(loser_id, winner_id, rec.conflict_node, event_t, 'head_on')
-                conflict_log('AGV%d fallback action=segmented_avoid conflict_node=%s target=%s', ...
-                    loser_id, node_str(rec.conflict_node), node_str(AGVs(loser_id).target_node));
-                schedule_after_segmented_success(loser_id, event_t);
             elseif replan_dynamic_target(loser_id, event_t)
                 conflict_log('AGV%d fallback action=replan_dynamic_target target=%s', loser_id, node_str(AGVs(loser_id).target_node));
+                schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
+            elseif plan_yield_path(loser_id, winner_id, event_t)
+                conflict_log('AGV%d fallback action=yield_path', loser_id);
+                AGVs(loser_id).yield_resume_status = AGVs(loser_id).status;
+                transition_to(loser_id, 'Yielding');
                 schedule_in(loser_id, event_t, AGVs(loser_id).step_dur);
             else
                 apply_wait_only_strategy(loser_id, winner_id, event_t, 'batch_fallback');
@@ -1751,59 +1748,94 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         success = true;
     end
     % 尝试绕行路径
-    function success = plan_segmented_avoid_path(id, blocker_id, conflict_node, event_t, mode)
+    function success = plan_bypass_path(id, blocker_id, event_t)
         success = false;
-        if nargin < 5 || isempty(mode)
-            mode = 'generic';
-        end
-
         curr_pos = AGVs(id).pos;
-        original_target = AGVs(id).target_node;
-        if ismember(AGVs(id).status, {'Waiting_Clearance', 'Yielding'}) && ~isempty(AGVs(id).wait_resume_target)
-            original_target = AGVs(id).wait_resume_target;
-        end
-
         blocker_pos = AGVs(blocker_id).pos;
         next_blocker = get_planned_next_cell(blocker_id);
         blocker_dir = next_blocker - blocker_pos;
         if isequal(blocker_dir, [0, 0])
             blocker_dir = blocker_pos - curr_pos;
         end
-        if abs(blocker_dir(1)) >= abs(blocker_dir(2)) && blocker_dir(1) ~= 0
-            blocker_dir = [sign(blocker_dir(1)), 0];
-        elseif blocker_dir(2) ~= 0
-            blocker_dir = [0, sign(blocker_dir(2))];
+
+        lateral_dirs = [0 1; 0 -1; 1 0; -1 0];
+        if abs(blocker_dir(1)) >= abs(blocker_dir(2))
+            lateral_dirs = [0 1; 0 -1; 1 0; -1 0];
         else
-            blocker_dir = [0, 0];
-        end
-        if isempty(conflict_node)
-            conflict_node = next_blocker;
+            lateral_dirs = [1 0; -1 0; 0 1; 0 -1];
         end
 
-        base_dirs = [-1 0; 1 0; 0 -1; 0 1];
         candidate_waypoints = [];
-        if ~isempty(conflict_node)
-            candidate_waypoints = [candidate_waypoints; conflict_node + base_dirs]; %#ok<AGROW>
-        end
-        candidate_waypoints = [candidate_waypoints; curr_pos + base_dirs]; %#ok<AGROW>
-
-        if any(strcmp(mode, {'rear_end', 'head_on'}))
-            if abs(blocker_dir(1)) >= abs(blocker_dir(2))
-                lateral_dirs = [0 1; 0 -1; 1 0; -1 0];
-            else
-                lateral_dirs = [1 0; -1 0; 0 1; 0 -1];
-            end
-            for k = 1:size(lateral_dirs, 1)
-                side = blocker_pos + lateral_dirs(k, :);
-                ahead = side + blocker_dir;
-                candidate_waypoints = [candidate_waypoints; side; ahead]; %#ok<AGROW>
-            end
+        for k = 1:size(lateral_dirs, 1)
+            side = blocker_pos + lateral_dirs(k, :);
+            ahead = side + blocker_dir;
+            candidate_waypoints = [candidate_waypoints; side; ahead]; %#ok<AGROW>
         end
 
         [~, uidx] = unique(candidate_waypoints, 'rows', 'stable');
         candidate_waypoints = candidate_waypoints(uidx, :);
-        if isempty(candidate_waypoints)
+        best_path = [];
+        best_cost = inf;
+        for k = 1:size(candidate_waypoints, 1)
+            waypoint = candidate_waypoints(k, :);
+            if ~is_cell_navigable(waypoint) || isequal(waypoint, blocker_pos)
+                continue;
+            end
+            [p1, c1] = astar_planner_turn3(get_dynamic_eval_map(id, waypoint), curr_pos, waypoint, ...
+                AGVs(id).payload_weight, [], AGVs(id).type);
+            if isempty(p1) || ~isfinite(c1)
+                continue;
+            end
+            if isempty(AGVs(id).target_node)
+                candidate_path = p1;
+                total_cost = c1;
+            else
+                [p2, c2] = astar_planner_turn3(get_dynamic_eval_map(id, AGVs(id).target_node), waypoint, AGVs(id).target_node, ...
+                    AGVs(id).payload_weight, [], AGVs(id).type);
+                if isempty(p2) || ~isfinite(c2)
+                    continue;
+                end
+                candidate_path = [p1; p2(2:end, :)];
+                total_cost = c1 + c2;
+            end
+            if total_cost < best_cost
+                best_cost = total_cost;
+                best_path = candidate_path;
+            end
+        end
+
+        if ~isempty(best_path)
+            assign_planned_path(id, best_path, AGVs(id).target_node);
+            % Do not overwrite the original task context if this AGV is
+            % already executing a temporary waiting/yielding maneuver.
+            if ~ismember(AGVs(id).status, {'Waiting_Clearance', 'Yielding'})
+                AGVs(id).yield_resume_status = AGVs(id).status;
+                AGVs(id).wait_resume_status = AGVs(id).status;
+                AGVs(id).wait_resume_target = AGVs(id).target_node;
+            end
+            conflict_log('AGV%d action=plan_bypass_path blocker=AGV%d success path_to=%s', id, blocker_id, node_str(AGVs(id).target_node));
+            success = true;
+        end
+    end
+    % 追尾冲突时尝试逃逸/避让
+    function success = plan_rear_end_escape(id, blocker_id, ~)
+        success = false;
+        original_target = AGVs(id).target_node;
+        if isempty(original_target)
             return;
+        end
+
+        evalMap = get_dynamic_eval_map(id, original_target);
+        blocker_curr = AGVs(blocker_id).pos;
+        blocker_next = get_planned_next_cell(blocker_id);
+
+        if ~(blocker_curr(1) == AGVs(id).pos(1) && blocker_curr(2) == AGVs(id).pos(2)) && ...
+                ~(blocker_curr(1) == original_target(1) && blocker_curr(2) == original_target(2))
+            evalMap(blocker_curr(1), blocker_curr(2)) = 1;
+        end
+        if ~(blocker_next(1) == AGVs(id).pos(1) && blocker_next(2) == AGVs(id).pos(2)) && ...
+                ~(blocker_next(1) == original_target(1) && blocker_next(2) == original_target(2))
+            evalMap(blocker_next(1), blocker_next(2)) = 1;
         end
 
         if AGVs(id).type == 2
@@ -1812,100 +1844,16 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
             current_costmap = costmap_type1;
         end
 
-        reservations = get_reservation_snapshot(event_t);
-        blocker_future_path = [];
-        if ~isempty(AGVs(blocker_id).path) && AGVs(blocker_id).path_idx <= size(AGVs(blocker_id).path, 1)
-            blocker_future_path = AGVs(blocker_id).path(AGVs(blocker_id).path_idx:end, 1:2);
+        [escape_path, escape_cost] = astar_planner_turn3(evalMap, AGVs(id).pos, original_target, ...
+            AGVs(id).payload_weight, current_costmap, AGVs(id).type);
+        if isempty(escape_path) || ~isfinite(escape_cost)
+            return;
         end
 
-        best_path = [];
-        best_target = original_target;
-        best_score = inf;
-        best_conflict_count = inf;
-        best_wait_steps = inf;
-        best_is_feasible = false;
-
-        for k = 1:size(candidate_waypoints, 1)
-            waypoint = candidate_waypoints(k, :);
-            if ~is_cell_navigable(waypoint) || isequal(waypoint, curr_pos) || isequal(waypoint, blocker_pos)
-                continue;
-            end
-            if ~isempty(blocker_future_path) && ismember(waypoint, blocker_future_path, 'rows')
-                continue;
-            end
-
-            evalMap1 = get_dynamic_eval_map(id, waypoint);
-            if ~isempty(conflict_node) && is_cell_navigable(conflict_node) && ...
-                    ~isequal(conflict_node, curr_pos) && ~isequal(conflict_node, waypoint)
-                evalMap1(conflict_node(1), conflict_node(2)) = 1;
-            end
-            if is_cell_navigable(blocker_pos) && ~isequal(blocker_pos, waypoint)
-                evalMap1(blocker_pos(1), blocker_pos(2)) = 1;
-            end
-            if is_cell_navigable(next_blocker) && ~isequal(next_blocker, waypoint)
-                evalMap1(next_blocker(1), next_blocker(2)) = 1;
-            end
-
-            [p1, c1] = astar_planner_turn3(evalMap1, curr_pos, waypoint, ...
-                AGVs(id).payload_weight, current_costmap, AGVs(id).type);
-            if isempty(p1) || ~isfinite(c1)
-                continue;
-            end
-
-            if isempty(original_target)
-                candidate_path = p1;
-                total_cost = c1;
-                candidate_target = waypoint;
-            else
-                evalMap2 = get_dynamic_eval_map(id, original_target);
-                [p2, c2] = astar_planner_turn3(evalMap2, waypoint, original_target, ...
-                    AGVs(id).payload_weight, current_costmap, AGVs(id).type);
-                if isempty(p2) || ~isfinite(c2)
-                    continue;
-                end
-                candidate_path = [p1; p2(2:end, :)];
-                total_cost = c1 + c2;
-                candidate_target = original_target;
-            end
-
-            [is_feasible, conflict_count, wait_steps] = evaluate_candidate_path_window(id, candidate_path, event_t, reservations);
-            if is_feasible
-                score = total_cost + wait_steps;
-            else
-                score = total_cost + 10 * conflict_count + wait_steps;
-            end
-
-            if (conflict_count < best_conflict_count) || ...
-                    (conflict_count == best_conflict_count && score < best_score - 1e-9) || ...
-                    (conflict_count == best_conflict_count && abs(score - best_score) <= 1e-9 && wait_steps < best_wait_steps)
-                best_conflict_count = conflict_count;
-                best_wait_steps = wait_steps;
-                best_score = score;
-                best_path = candidate_path;
-                best_target = candidate_target;
-                best_is_feasible = is_feasible;
-            end
-        end
-
-        if ~isempty(best_path) && best_is_feasible
-            assign_planned_path(id, best_path, best_target);
-            if ismember(AGVs(id).status, {'Waiting_Clearance', 'Yielding'}) && ~isempty(AGVs(id).wait_resume_status)
-                transition_to(id, AGVs(id).wait_resume_status);
-                reset_wait_recovery_state(id);
-            end
-            if best_wait_steps > 0
-                AGVs(id).next_event_t = event_t + best_wait_steps;
-                reservation_dirty = true;
-            end
-            clear_wait_pattern_memory(id);
-            conflict_log('AGV%d action=segmented_avoid mode=%s blocker=AGV%d via_conflict=%s conflicts=%d wait=%g target=%s', ...
-                id, mode, blocker_id, node_str(conflict_node), best_conflict_count, best_wait_steps, node_str(best_target));
-            success = true;
-        elseif ~isempty(best_path)
-            conflict_log('AGV%d action=segmented_avoid mode=%s blocker=AGV%d rejected conflicts=%d wait=%g', ...
-                id, mode, blocker_id, best_conflict_count, best_wait_steps);
-        end
+        assign_planned_path(id, escape_path, original_target);
+        success = true;
     end
+    % 相向冲突时选择退让车辆
     function [retreat_id, hold_id] = select_headon_retreat_vehicle(id_a, id_b, event_t, priority_a, priority_b)
         score_a = estimate_safe_harbor_retreat_score(id_a, id_b, event_t);
         score_b = estimate_safe_harbor_retreat_score(id_b, id_a, event_t);
@@ -2113,6 +2061,47 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         end
     end
     % 规划让行路径
+    function success = plan_yield_path(id, blocker_id, event_t)
+        success = false;
+        curr_pos = AGVs(id).pos;
+        blocker_pos = AGVs(blocker_id).pos;
+        current_gap = abs(curr_pos(1) - blocker_pos(1)) + abs(curr_pos(2) - blocker_pos(2));
+        candidate_nodes = [];
+
+        directions = [-1, 0; 1, 0; 0, -1; 0, 1];
+        for d = 1:size(directions, 1)
+            candidate = curr_pos + directions(d, :);
+            if candidate(1) < 1 || candidate(1) > mapH || candidate(2) < 1 || candidate(2) > mapW
+                continue;
+            end
+            candidate_nodes = [candidate_nodes; candidate]; %#ok<AGROW>
+        end
+
+        if isempty(candidate_nodes)
+            return;
+        end
+
+        [~, unique_idx] = unique(candidate_nodes, 'rows', 'stable');
+        candidate_nodes = candidate_nodes(unique_idx, :);
+        candidate_gaps = abs(candidate_nodes(:, 1) - blocker_pos(1)) + abs(candidate_nodes(:, 2) - blocker_pos(2));
+        candidate_nodes = [candidate_nodes, candidate_gaps];
+        candidate_nodes = sortrows(candidate_nodes, -3);
+
+        for c_idx = 1:size(candidate_nodes, 1)
+            candidate = candidate_nodes(c_idx, 1:2);
+            if isequal(candidate, curr_pos) || isequal(candidate, blocker_pos)
+                continue;
+            end
+            if candidate_nodes(c_idx, 3) < current_gap
+                continue;
+            end
+            if plan_path(id, candidate, [1, 1], 'task', event_t)
+                success = true;
+                return;
+            end
+        end
+    end
+    % 避让后恢复原任务
     function resume_after_yield(id, event_t)
         resume_status = AGVs(id).yield_resume_status;
         if isempty(resume_status)
@@ -2280,7 +2269,7 @@ function run_visualization_loop_event_sm_text(num_agvs, depots, agv_schedules, t
         update_battery_monitor(f_batt, b_handle, t_handles, curr_bat_list);
         drawnow limitrate;
         pause(0.02);
-    end
+    end    
     % 打印冲突日志
     function conflict_log(fmt, varargin)
         if ~debug_conflict_log

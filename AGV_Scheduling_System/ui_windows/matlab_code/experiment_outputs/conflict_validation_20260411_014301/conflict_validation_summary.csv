@@ -1,5 +1,0 @@
-case_name,expected_type,runtime_detected,runtime_blocker,window_detected,window_blocker,window_type,window_time,classified_type,winner,loser,priority_a,priority_b,step_dur_a,step_dur_b,strategy,strategy_desc
-node_contention,Head-on swap,1,2,0,0,none,-1,Occupied node,2,1,0.700353730634642,0.717110440055562,1,1,yield_path,让行避让到邻近安全格，不是超车
-reserved_edge_swap,Reserved_edge_swap,1,2,0,0,none,-1,Occupied node,2,1,0.704284622995497,0.709521094689535,1,1,yield_path,让行避让到邻近安全格，不是超车
-occupied_node,Occupied node,1,1,0,0,none,-1,Occupied node,1,2,0.706651651028796,0.277518460228386,1,1,yield_path,让行避让到邻近安全格，不是超车
-rear_end_probe,Rear-end,1,2,0,0,none,-1,Occupied node,2,1,0.725120781371974,0.739782902115279,1,1,yield_path,让行避让到邻近安全格，不是超车

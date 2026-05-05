@@ -80,6 +80,9 @@ function [path, gScore_goal, turn_count, expanded_nodes, path_length, gScore_mat
     % 开放列表（存储待扩展节点的三维线性索引）和对应的布尔掩码
     openList = [];
     openMask = false(numNodes3D, 1);
+    % Explicit closed set: true means the 3D state has been popped from
+    % openList and expanded. A better gScore may reopen it below.
+    closedMask = false(numNodes3D, 1);
 
     % 初始化起点：由于起点没有进入方向，将4个方向都视为0代价的起点状态
     for d = 1:4
@@ -107,6 +110,10 @@ function [path, gScore_goal, turn_count, expanded_nodes, path_length, gScore_mat
         % 将该节点从开放列表中移除
         openList(minPos) = [];
         openMask(curr3D) = false;
+        if closedMask(curr3D)
+            continue;
+        end
+        closedMask(curr3D) = true;
 
         % 将三维线性索引转换为 (r,c,d) ，便于后续计算
         rem_idx = curr3D - 1;                     % 转换为0基索引
@@ -151,6 +158,9 @@ function [path, gScore_goal, turn_count, expanded_nodes, path_length, gScore_mat
             end
 
             % 如果新代价比已记录的更优，则更新该邻居状态
+            % Calculate the neighbor state index before updating open/closed.
+            neighbor3D = nR + (nC-1)*rows + (nD-1)*(rows*cols);
+
             if tentative_gScore < gScore(nR, nC, nD)
                 gScore(nR, nC, nD) = tentative_gScore;
                 parent_idx(nR, nC, nD) = curr3D;   % 记录前驱节点索引
@@ -166,8 +176,8 @@ function [path, gScore_goal, turn_count, expanded_nodes, path_length, gScore_mat
                 % 最终f = g + h * (1 + a_compressed)
                 fScore(nR, nC, nD) = tentative_gScore + h_base * (1.0 + a_compressed);
 
-                % 计算邻居状态的三维线性索引
-                neighbor3D = nR + (nC-1)*rows + (nD-1)*(rows*cols);
+                % Reopen the neighbor if it had already been closed.
+                closedMask(neighbor3D) = false;
 
                 % 如果邻居还不在开放列表中，则加入
                 if ~openMask(neighbor3D)

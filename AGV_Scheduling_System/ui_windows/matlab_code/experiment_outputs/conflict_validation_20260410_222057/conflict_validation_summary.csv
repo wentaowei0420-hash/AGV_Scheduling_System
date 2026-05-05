@@ -1,5 +1,0 @@
-case_name,expected_type,runtime_detected,runtime_blocker,window_detected,window_blocker,window_type,window_time,classified_type,winner,loser,priority_a,priority_b,strategy
-head_on_swap,Head-on swap,1,2,1,2,reserved_node,10,Head-on swap,2,1,0.698804020668395,0.715560730089315,yield_path
-node_contention,Node contention,1,2,1,2,reserved_node,10,Node contention,2,1,0.702993198023625,0.708229669717662,yield_path
-occupied_node,Occupied node,1,2,1,2,reserved_node,10,Occupied node,1,2,0.706135081040047,0.277001890239637,yield_path
-rear_end_probe,Rear-end,0,0,1,2,reserved_node,10,Rear-end,2,1,0.69670943199078,0.711371552734085,yield_path

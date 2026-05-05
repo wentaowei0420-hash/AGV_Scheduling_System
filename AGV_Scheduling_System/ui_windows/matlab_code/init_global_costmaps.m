@@ -1,4 +1,4 @@
-﻿function init_global_costmaps()
+function init_global_costmaps()
         % 声明全局变量，供全局调用
         global mapW mapH;
         global costmap_type1 costmap_type2;

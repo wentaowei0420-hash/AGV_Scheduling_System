@@ -1223,29 +1223,15 @@ function [cost_map, map_rows, map_cols] = get_ga_costmap(agv_type)
     [map_rows, map_cols] = size(cost_map);
 end
 function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_rank_idx, PN)
-
-
-
-
-
-
-
-
     child = chrom;
     if num_tasks < 2
         return;
     end
-
     tau1 = rand(); 
     tau2 = rand();
-
-    
     tau1_prime = tau1 - 0.3 * (1 - g/G); 
-
     if tau1_prime < tau2
-        if parent_rank_idx > 0.6 * PN
-            
-            
+        if parent_rank_idx > 0.6 * PN                    
             range = sort(randperm(num_tasks, 2));
             
             child(range(1):range(2)) = fliplr(child(range(1):range(2)));
@@ -1270,14 +1256,7 @@ function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_ra
 
             
             child(extract_idx) = []; 
-            
-            
             child(extract_idx + num_tasks - 1) = [];
-
-            
-            
-            
-            
             child = [child(1:insert_idx-1), extracted_task, child(insert_idx:num_tasks-1), ...
                      child(num_tasks:num_tasks+insert_idx-2), extracted_agv, child(num_tasks+insert_idx-1:end)];
             
@@ -1322,14 +1301,12 @@ function child = mutate_fork_cpo(chrom, num_tasks, num_agvs, pm, g, G, parent_ra
         end
     end
 end
-
 function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
     if num_tasks < 2
         child1 = p1;
         child2 = p2;
         return;
     end
-    
     child1 = zeros(1, num_tasks * 2);
     child2 = zeros(1, num_tasks * 2);
 
@@ -1370,12 +1347,3 @@ function [child1, child2] = crossover_IPOX_MPX(p1, p2, num_tasks)
     child1 = [c1_seq, c1_agv];
     child2 = [c2_seq, c2_agv];
 end
-
-
-
-
-
-
-
-
-
