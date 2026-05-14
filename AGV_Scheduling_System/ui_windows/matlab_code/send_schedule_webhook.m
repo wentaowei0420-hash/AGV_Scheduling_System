@@ -15,9 +15,9 @@ function ok = send_schedule_webhook(num_agvs, agv_schedules)
     payload = struct('type', 'schedule_result', 'assignments', {schedule_list});
 
     try
-        % Schedule callbacks share the same local API endpoint as runtime
-        % status polling, so allow a longer timeout to avoid false failures.
-        options = weboptions('MediaType', 'application/json', 'Timeout', 8.0);
+        % Avoid blocking the MATLAB engine for a long time if the UI API is
+        % busy or not listening; failed payloads are still logged locally.
+        options = weboptions('MediaType', 'application/json', 'Timeout', 1.0);
         response = webwrite(webhook_url, payload, options);
         ok = true;
 
@@ -33,7 +33,7 @@ function ok = send_schedule_webhook(num_agvs, agv_schedules)
             disp('>> [Webhook] Schedule result delivered.');
         end
     catch ME
-        warning('Schedule webhook failed: %s', ME.message);
+        warning('AGV:ScheduleWebhookFailed', 'Schedule webhook failed: %s', ME.message);
         log_webhook_failure('schedule_result', payload, ME);
     end
 end

@@ -1,0 +1,26 @@
+
+[Case 2] reserved_edge_swap
+  AGV-3: start=243 | via=[244  245  246  247  248  249  250] | end=251 | step_dur=1.00
+  AGV-4: start=251 | via=[250  249  248  247  246  245  244] | end=243 | step_dur=1.00
+  expected=Head-on swap | runtime_detected=0 | runtime_blocker=0 | classified=Head-on meet
+  event_window: detected=1 | blocker=4 | type=reserved_node | first_t=13
+  priority_first_decision[t=10]: AGV-3=0.703 | AGV-4=0.708
+  pairwise_first_decision[t=10]: AGV-3(0.703) vs AGV-4(0.708) -> winner=AGV-4 loser=AGV-3
+  priority_latest_decision[t=10]: AGV-3=0.703 | AGV-4=0.708
+  pairwise_latest_decision[t=10]: AGV-3(0.703) vs AGV-4(0.708) -> winner=AGV-4 loser=AGV-3
+  winner=AGV-4 | loser=AGV-3
+  strategy=replan_original_target | head-on meet: loser replans first
+  detailed_conflict_history:
+    conflict #1
+      detected_at_t=10 | predicted_conflict_t=13 | lead_time=3
+      self=AGV-3 | blocker=AGV-4 | source=window | window_type=reserved_node | classified=Head-on meet
+      self_state=Moving_Drop | self_pos=[13,3] | self_next=[13,4]
+      blocker_state=Moving_Pick | blocker_pos=[13,11] | blocker_next=[13,10]
+      conflict_node=[13,7]
+      priority(self)=0.703 | priority(blocker)=0.708 | winner=AGV-4 | loser=AGV-3
+      reason=source=window, window=reserved_node. opposite directions into same conflict node=[13,7]: self [13,6]->[13,7], blocker [13,8]->[13,7].
+      resolution=replan_original_target | head-on meet: loser replans first
+      replanned_path=[13,3] -> [14,3] -> [14,4] -> [14,5] -> [14,6] -> [14,7] -> [14,8] -> [14,9] -> ... (11 nodes)
+  time-node timeline after conflict handling:
+    reserved_edge_swap | AGV-3: t=10->243(current) | t=11->243(hold) | t=12->263(executed) | t=13->264(executed) | t=14->265(executed) | t=15->266(executed) | t=16->267(executed) | t=17->268(executed) | t=18->269(executed) | t=19->270(executed) | t=20->271(executed) | t=21->251(executed)
+    reserved_edge_swap | AGV-4: t=10->251(current) | t=11->250(executed) | t=12->249(executed) | t=13->248(executed) | t=14->247(executed) | t=15->246(executed) | t=16->245(executed) | t=17->244(executed) | t=18->243(executed)

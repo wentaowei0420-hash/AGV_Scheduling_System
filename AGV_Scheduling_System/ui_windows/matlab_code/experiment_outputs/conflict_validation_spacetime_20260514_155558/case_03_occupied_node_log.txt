@@ -1,0 +1,26 @@
+
+[Case 3] occupied_node
+  AGV-8: start=41 | via=[42  43  44  45] | end=46 | step_dur=1.00
+  AGV-9: start=43 | via=[43  43  43  43] | end=44 | step_dur=1.00
+  expected=Occupied node | runtime_detected=0 | runtime_blocker=0 | classified=Occupied node
+  event_window: detected=1 | blocker=9 | type=reserved_node | first_t=11
+  priority_first_decision[t=10]: AGV-8=0.706 | AGV-9=0.723
+  pairwise_first_decision[t=10]: AGV-8(0.706) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-8
+  priority_latest_decision[t=10]: AGV-8=0.706 | AGV-9=0.723
+  pairwise_latest_decision[t=10]: AGV-8(0.706) vs AGV-9(0.723) -> winner=AGV-9 loser=AGV-8
+  winner=AGV-9 | loser=AGV-8
+  strategy=replan_original_target | occupied node: moving AGV replans around static blocker
+  detailed_conflict_history:
+    conflict #1
+      detected_at_t=10 | predicted_conflict_t=11 | lead_time=1
+      self=AGV-8 | blocker=AGV-9 | source=window | window_type=reserved_node | classified=Occupied node
+      self_state=Moving_Drop | self_pos=[3,1] | self_next=[3,2]
+      blocker_state=Loading | blocker_pos=[3,3] | blocker_next=[3,4]
+      conflict_node=[3,3]
+      priority(self)=0.706 | priority(blocker)=0.723 | winner=AGV-9 | loser=AGV-8
+      reason=source=window, window=reserved_node. self_next=[3,2] equals blocker_pos=[3,3], blocker_status=Loading, blocker_next=[3,4].
+      resolution=replan_original_target | occupied node: moving AGV replans around static blocker
+      replanned_path=[3,1] -> [3,2] -> [2,2] -> [2,3] -> [2,4] -> [2,5] -> [2,6] -> [3,6]
+  time-node timeline after conflict handling:
+    occupied_node | AGV-8: t=10->41(current) | t=11->41(hold) | t=12->42(executed) | t=13->22(executed) | t=14->23(executed) | t=15->24(executed) | t=16->25(executed) | t=17->26(executed) | t=18->46(executed)
+    occupied_node | AGV-9: t=10->43(current) | t=11->43(hold) | t=12->43(hold) | t=13->43(hold) | t=14->43(hold) | t=15->43(hold) | t=16->44(executed)

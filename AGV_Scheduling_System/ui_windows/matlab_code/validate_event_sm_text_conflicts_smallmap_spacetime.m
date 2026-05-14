@@ -152,7 +152,10 @@ function plot_case_spacetime(grid_map, case_cfg, result, output_png, show_figure
     zlim(ax, [min_t, max_t + 1]);
     set(ax, 'YDir', 'reverse');
     if ~isempty(legend_handles)
-        legend(ax, legend_handles, legend_labels, 'Location', 'northeast', 'FontName', style.en_font);
+         legend(ax, legend_handles, legend_labels, ...
+        'Location', 'northeast', ...
+        'FontName', style.en_font, ...
+        'FontSize', 28);
     end
     drawnow;
     if save_figure

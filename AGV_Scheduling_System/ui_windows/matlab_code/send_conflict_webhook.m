@@ -1,5 +1,10 @@
 function ok = send_conflict_webhook(current_t, id_self, pos_self, id_blocker, pos_blocker, conflict_name)
     ok = false;
+    persistent muted_until_t
+    if ~isempty(muted_until_t) && current_t < muted_until_t
+        return;
+    end
+
     webhook_url = 'http://127.0.0.1:5000/api/matlab/webhook';
     conflict_name_cn = localize_conflict_type(conflict_name);
     payload = struct( ...
@@ -13,11 +18,12 @@ function ok = send_conflict_webhook(current_t, id_self, pos_self, id_blocker, po
     );
 
     try
-        % Local Flask may be concurrently serving UI polling requests; keep
-        % webhook timeout slightly higher to avoid dropping conflict events.
-        options = weboptions('MediaType', 'application/json', 'Timeout', 8.0);
+        % Keep runtime conflict reporting non-blocking enough for animation.
+        % If the local API is busy/offline, the simulation should continue.
+        options = weboptions('MediaType', 'application/json', 'Timeout', 0.5);
         response = webwrite(webhook_url, payload, options);
         ok = true;
+        muted_until_t = [];
 
         if isstruct(response) && isfield(response, 'msg')
             response_msg = response.msg;
@@ -31,7 +37,8 @@ function ok = send_conflict_webhook(current_t, id_self, pos_self, id_blocker, po
             fprintf('[Webhook] Conflict event delivered: T=%d, AGV-%d vs AGV-%d\n', current_t, id_self, id_blocker);
         end
     catch ME
-        warning('Conflict webhook failed at T=%d for AGV-%d vs AGV-%d: %s', ...
+        muted_until_t = current_t + 30;
+        warning('AGV:ConflictWebhookFailed', 'Conflict webhook failed at T=%d for AGV-%d vs AGV-%d: %s', ...
             current_t, id_self, id_blocker, ME.message);
         log_webhook_failure('conflict_event', payload, ME);
     end
